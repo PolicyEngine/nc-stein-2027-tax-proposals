@@ -1,68 +1,100 @@
-"""Modal-based congressional-district impact pipeline for the Utah 2026 tax changes.
+"""Modal-based congressional-district impact pipeline for the NC Stein
+FY2026-27 tax proposals.
 
-Calculates actual district-level impacts for Utah's four congressional
-districts (UT-01, UT-02, UT-03, UT-04; state_fips=49) using district-
-specific datasets on HuggingFace.
+Calculates district-level impacts for North Carolina's 14 congressional
+districts (NC-01..NC-14; state_fips=37) using district-specific
+datasets on HuggingFace.
 
-Uses the inverse reform (reverting 2026 Utah parameters to 2025 values)
-and reports ``impact = current_law - reverted``, matching the aggregate
-pipeline.
+Baseline sim applies ``baseline_adjustments.json`` (triggered rate cuts
+under current NC law: 3.49% in 2027, 2.99% in 2028). Reform sim applies
+``reform.json`` (the Stein package). Impact convention:
+``reform - baseline`` (positive = household gains).
 
 Usage:
-    modal run scripts/modal_district_pipeline.py
+    modal run scripts/modal_district_pipeline.py                        # all 14 NC districts, default year
+    modal run scripts/modal_district_pipeline.py --year 2027
+    modal run scripts/modal_district_pipeline.py --years 2026,2027,2028
 """
 
 import os
 
 import modal
 
-# Modal app definition
-app = modal.App("utah-2026-tax-changes-district-pipeline")
 
-# Image with policyengine-us and dependencies
+app = modal.App("nc-stein-2027-tax-proposals-district-pipeline")
+
 image = (
     modal.Image.debian_slim(python_version="3.11")
+    .apt_install("git")
     .pip_install(
-        "policyengine-us>=1.150.0",
+        # Install from the merge commit for policyengine-us PR #8142
+        # (NC CDCC contrib reform + nc_refundable_credits stacking fix).
+        # Switch to a PyPI pin once a release including that commit is
+        # published.
+        "policyengine-us @ git+https://github.com/PolicyEngine/policyengine-us.git@cd40083a6e7f81d303a532501f2026798a53d50e",
         "numpy>=1.24.0",
         "pandas>=2.0.0",
         "huggingface_hub",
     )
 )
 
-# Utah: 4 congressional districts, state FIPS 49.
-UTAH_STATE = "UT"
-UTAH_STATE_FIPS = 49
-UTAH_DISTRICTS = [1, 2, 3, 4]
+# Stein proposals: EITC and CDCC take effect 2026; rate maintenance and
+# standard deduction increases take effect 2027.
+YEARS = [2026, 2027, 2028]
+DEFAULT_YEAR = 2027
 
-# Inverse reform: revert Utah parameters to pre-2026 (2025) values.
-REFORM_DICT = {
-    "gov.states.ut.tax.income.rate": {
-        "2026-01-01.2100-12-31": 0.045,
-    },
-    "gov.states.ut.tax.income.credits.ctc.reduction.start.SEPARATE": {
-        "2026-01-01.2100-12-31": 27000,
-    },
-    "gov.states.ut.tax.income.credits.ctc.reduction.start.SINGLE": {
-        "2026-01-01.2100-12-31": 43000,
-    },
-    "gov.states.ut.tax.income.credits.ctc.reduction.start.HEAD_OF_HOUSEHOLD": {
-        "2026-01-01.2100-12-31": 43000,
-    },
-    "gov.states.ut.tax.income.credits.ctc.reduction.start.JOINT": {
-        "2026-01-01.2100-12-31": 54000,
-    },
-    "gov.states.ut.tax.income.credits.ctc.reduction.start.SURVIVING_SPOUSE": {
-        "2026-01-01.2100-12-31": 54000,
+# North Carolina: 14 congressional districts, state FIPS 37.
+NC_STATE = "NC"
+NC_STATE_FIPS = 37
+NC_DISTRICTS = list(range(1, 15))
+
+# Baseline adjustment: rate-reduction triggers in current NC law that
+# PolicyEngine-US does not yet encode. Applied to the baseline sim.
+BASELINE_ADJUSTMENTS_DICT = {
+    "gov.states.nc.tax.income.rate": {
+        "2027-01-01.2027-12-31": 0.0349,
+        "2028-01-01.2100-12-31": 0.0299,
     },
 }
 
-YEAR = 2026
+# Stein FY2026-27 reform package. Applied to the reform sim.
+REFORM_DICT = {
+    "gov.states.nc.tax.income.rate": {
+        "2027-01-01.2100-12-31": 0.0399,
+    },
+    "gov.states.nc.tax.income.deductions.standard.amount.SINGLE": {
+        "2027-01-01.2100-12-31": 13250,
+    },
+    "gov.states.nc.tax.income.deductions.standard.amount.SEPARATE": {
+        "2027-01-01.2100-12-31": 13250,
+    },
+    "gov.states.nc.tax.income.deductions.standard.amount.HEAD_OF_HOUSEHOLD": {
+        "2027-01-01.2100-12-31": 19875,
+    },
+    "gov.states.nc.tax.income.deductions.standard.amount.JOINT": {
+        "2027-01-01.2100-12-31": 26500,
+    },
+    "gov.states.nc.tax.income.deductions.standard.amount.SURVIVING_SPOUSE": {
+        "2027-01-01.2100-12-31": 26500,
+    },
+    "gov.contrib.states.nc.eitc.in_effect": {
+        "2026-01-01.2100-12-31": True,
+    },
+    "gov.contrib.states.nc.eitc.match": {
+        "2026-01-01.2100-12-31": 0.1,
+    },
+    "gov.contrib.states.nc.cdcc.in_effect": {
+        "2026-01-01.2100-12-31": True,
+    },
+    "gov.contrib.states.nc.cdcc.match": {
+        "2026-01-01.2100-12-31": 0.3,
+    },
+}
 
 
-def get_utah_districts() -> list[str]:
-    """Return the list of Utah congressional district IDs (UT-01..UT-04)."""
-    return [f"{UTAH_STATE}-{d:02d}" for d in UTAH_DISTRICTS]
+def get_nc_districts() -> list[str]:
+    """Return the list of NC congressional district IDs (NC-01..NC-14)."""
+    return [f"{NC_STATE}-{d:02d}" for d in NC_DISTRICTS]
 
 
 @app.function(
@@ -71,33 +103,33 @@ def get_utah_districts() -> list[str]:
     timeout=1800,
     retries=2,
 )
-def calculate_single_district_impact(district_id: str, year: int = YEAR) -> dict:
-    """Calculate impact for a single Utah congressional district.
+def calculate_single_district_impact(district_id: str, year: int) -> dict:
+    """Calculate impact for a single NC congressional district.
 
     Uses the district-specific dataset on HuggingFace. Returns winners/
     losers share, average and relative income change, and poverty
-    percent changes. All figures use the impact = current_law - reverted
-    convention.
+    percent changes. Figures use ``impact = reform - baseline``.
     """
     import numpy as np
     from policyengine_us import Microsimulation
     from policyengine_core.reforms import Reform
 
-    print(f"Calculating impact for {district_id}...")
+    print(f"Calculating impact for {district_id} year {year}...")
 
     dataset_url = f"hf://policyengine/policyengine-us-data/districts/{district_id}.h5"
 
     try:
-        reform = Reform.from_dict(REFORM_DICT, country_id="us")
+        baseline_reform = Reform.from_dict(BASELINE_ADJUSTMENTS_DICT, country_id="us")
+        stein_reform = Reform.from_dict(REFORM_DICT, country_id="us")
 
-        sim_baseline = Microsimulation(dataset=dataset_url)
-        sim_reform = Microsimulation(dataset=dataset_url, reform=reform)
+        sim_baseline = Microsimulation(dataset=dataset_url, reform=baseline_reform)
+        sim_reform = Microsimulation(dataset=dataset_url, reform=stein_reform)
 
         household_weight = np.array(sim_baseline.calculate("household_weight", period=year))
         baseline_net_income = np.array(sim_baseline.calculate("household_net_income", period=year))
         reform_net_income = np.array(sim_reform.calculate("household_net_income", period=year))
-        # current_law - reverted
-        income_change = baseline_net_income - reform_net_income
+        # reform - baseline (positive => household gains under Stein).
+        income_change = reform_net_income - baseline_net_income
 
         total_weight = household_weight.sum()
 
@@ -126,10 +158,10 @@ def calculate_single_district_impact(district_id: str, year: int = YEAR) -> dict
 
                 baseline_poverty_rate = (baseline_in_poverty * spm_unit_weight).sum() / total_spm_weight
                 reform_poverty_rate = (reform_in_poverty * spm_unit_weight).sum() / total_spm_weight
-                # impact = current_law - reverted
+                # impact = reform - baseline (negative => poverty fell)
                 poverty_pct_change = (
-                    (baseline_poverty_rate - reform_poverty_rate) / reform_poverty_rate * 100
-                    if reform_poverty_rate > 0
+                    (reform_poverty_rate - baseline_poverty_rate) / baseline_poverty_rate * 100
+                    if baseline_poverty_rate > 0
                     else 0.0
                 )
 
@@ -141,8 +173,8 @@ def calculate_single_district_impact(district_id: str, year: int = YEAR) -> dict
                     baseline_child_poverty_rate = (baseline_in_poverty * child_weight).sum() / total_child_weight
                     reform_child_poverty_rate = (reform_in_poverty * child_weight).sum() / total_child_weight
                     child_poverty_pct_change = (
-                        (baseline_child_poverty_rate - reform_child_poverty_rate) / reform_child_poverty_rate * 100
-                        if reform_child_poverty_rate > 0
+                        (reform_child_poverty_rate - baseline_child_poverty_rate) / baseline_child_poverty_rate * 100
+                        if baseline_child_poverty_rate > 0
                         else 0.0
                     )
                 else:
@@ -168,17 +200,24 @@ def calculate_single_district_impact(district_id: str, year: int = YEAR) -> dict
             "year": year,
         }
 
-        print(f"  {district_id}: avg=${avg_change:.2f}, winners={winners_share:.1%}, poverty={poverty_pct_change:+.1f}%")
+        print(f"  {district_id} {year}: avg=${avg_change:.2f}, winners={winners_share:.1%}, poverty={poverty_pct_change:+.1f}%")
         return result
 
     except Exception as e:
-        print(f"  ERROR for {district_id}: {e}")
+        print(f"  ERROR for {district_id} {year}: {e}")
         return None
 
 
 @app.local_entrypoint()
-def main(year: int = YEAR):
-    """Run Utah district-level analysis on Modal and save to CSV."""
+def main(year: int = 0, years: str = ""):
+    """Run NC district-level analysis on Modal and save to CSV.
+
+    Args:
+        year: Single year to run (0 means use the ``--years`` flag or
+            the default set).
+        years: Comma-separated list of years. Overrides ``--year`` when
+            provided. Default: 2026,2027,2028.
+    """
     import pandas as pd
 
     output_dir = os.path.join(
@@ -189,34 +228,54 @@ def main(year: int = YEAR):
     )
     os.makedirs(output_dir, exist_ok=True)
 
-    districts = get_utah_districts()
+    if years:
+        target_years = [int(y.strip()) for y in years.split(",")]
+    elif year:
+        target_years = [year]
+    else:
+        target_years = YEARS
 
-    print("Running Utah 2026 tax-changes district analysis on Modal...")
-    print(f"Year: {year}")
-    print(f"State: {UTAH_STATE} (FIPS {UTAH_STATE_FIPS})")
+    districts = get_nc_districts()
+
+    print("Running NC Stein FY2026-27 tax-proposals district analysis on Modal...")
+    print(f"Years: {target_years}")
+    print(f"State: {NC_STATE} (FIPS {NC_STATE_FIPS})")
     print(f"Districts: {districts}")
     print(f"Output directory: {output_dir}")
 
-    results = list(calculate_single_district_impact.map(districts, kwargs={"year": year}))
-    new_districts = [r for r in results if r is not None]
+    # Build (district, year) combinations for .map()
+    pairs = [(d, y) for y in target_years for d in districts]
+    district_args = [p[0] for p in pairs]
+    year_args = [p[1] for p in pairs]
 
-    failed_count = len(results) - len(new_districts)
+    results = list(
+        calculate_single_district_impact.starmap(zip(district_args, year_args))
+    )
+    new_rows = [r for r in results if r is not None]
+
+    failed_count = len(results) - len(new_rows)
     if failed_count > 0:
-        print(f"WARNING: {failed_count} districts failed to calculate")
+        print(f"WARNING: {failed_count} (district, year) combinations failed")
 
-    if not new_districts:
+    if not new_rows:
         print("ERROR: No district data generated!")
         return
 
-    df = pd.DataFrame(new_districts)
-    df = df.sort_values(["state", "district"]).reset_index(drop=True)
+    df = pd.DataFrame(new_rows)
 
     filepath = os.path.join(output_dir, "congressional_districts.csv")
-    df.to_csv(filepath, index=False)
-    print(f"\nSaved {len(df)} districts to: {filepath}")
+    if os.path.exists(filepath) and len(target_years) < len(YEARS):
+        existing = pd.read_csv(filepath)
+        existing = existing[~existing["year"].isin(target_years)]
+        df = pd.concat([existing, df], ignore_index=True)
 
-    print("\nSummary:")
-    print(f"  Total districts: {len(df)}")
-    print(f"  Avg income change: ${df['average_household_income_change'].mean():,.2f}")
-    print(f"  Min change: ${df['average_household_income_change'].min():,.2f}")
-    print(f"  Max change: ${df['average_household_income_change'].max():,.2f}")
+    df = df.sort_values(["year", "state", "district"]).reset_index(drop=True)
+    df.to_csv(filepath, index=False)
+    print(f"\nSaved {len(df)} district-year rows to: {filepath}")
+
+    print("\nSummary (most recent year):")
+    latest = df[df["year"] == df["year"].max()]
+    print(f"  Districts: {len(latest)}")
+    print(f"  Avg income change: ${latest['average_household_income_change'].mean():,.2f}")
+    print(f"  Min change: ${latest['average_household_income_change'].min():,.2f}")
+    print(f"  Max change: ${latest['average_household_income_change'].max():,.2f}")

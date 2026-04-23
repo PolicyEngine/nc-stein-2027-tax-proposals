@@ -25,11 +25,21 @@ import modal
 
 app = modal.App("nc-stein-2027-tax-proposals-pipeline")
 
-image = modal.Image.debian_slim(python_version="3.11").pip_install(
-    "policyengine-us>=1.150.0",
-    "numpy>=1.24.0",
-    "pandas>=2.0.0",
-    "huggingface_hub",
+image = (
+    modal.Image.debian_slim(python_version="3.11")
+    # git is needed to clone the policyengine-us repo below.
+    .apt_install("git")
+    .pip_install(
+        # Install from the merge commit for PR #8142 (NC CDCC contrib reform
+        # + nc_refundable_credits stacking fix a97772917c). Switch back to a
+        # PyPI pin ("policyengine-us>=X.Y.Z") once a release including that
+        # commit is published — PyPI's latest 1.665.0 was cut before the
+        # merge on 2026-04-23.
+        "policyengine-us @ git+https://github.com/PolicyEngine/policyengine-us.git@cd40083a6e7f81d303a532501f2026798a53d50e",
+        "numpy>=1.24.0",
+        "pandas>=2.0.0",
+        "huggingface_hub",
+    )
 )
 
 # Stein proposals: EITC and CDCC take effect 2026; rate maintenance and
