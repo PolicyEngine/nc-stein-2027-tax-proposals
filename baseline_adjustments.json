@@ -1,0 +1,7 @@
+{
+  "_comment": "Adjusts the PolicyEngine-US baseline for North Carolina to reflect the rate-reduction triggers currently in statute that PolicyEngine-US does not yet encode. Under current law, the individual income tax rate is scheduled to drop from 3.99% to 3.49% in 2027 and 2.99% in 2028 based on the consensus forecast. This file is applied to the baseline simulation; the Stein reform layer (reform.json) then overrides these rates and adds the additional provisions.",
+  "gov.states.nc.tax.income.rate": {
+    "2027-01-01.2027-12-31": 0.0349,
+    "2028-01-01.2100-12-31": 0.0299
+  }
+}

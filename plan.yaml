@@ -1,0 +1,200 @@
+# Dashboard Implementation Plan
+# NC Gov. Stein FY2026-27 Tax Proposals Dashboard
+# Modeled after: utah-2026-tax-changes and south-carolina-2026-tax-changes
+
+dashboard:
+  name: "nc-stein-2027-tax-proposals"
+  title: "NC Gov. Stein FY2026-27 tax proposals calculator"
+  description: >
+    Interactive calculator for the impact of Governor Josh Stein's
+    FY2026-27 Budget tax proposals for North Carolina. Provides household
+    and state-level (microsimulation) analysis for tax years 2026, 2027,
+    and 2028.
+  country: us
+  state: nc
+  audience: public
+  reference: "https://www.osbm.nc.gov/fy2026-27-budget-rec-budget-book/open#page=69"
+
+# Data pattern:
+#   - Household tab: live PolicyEngine API (two calls — baseline with
+#     triggered rate cuts, reform with the Stein package).
+#   - National (state) tab: Modal-backed precomputed CSVs for NC
+#     microsimulation; the frontend reads CSVs from public/data/.
+data_pattern: hybrid-precomputed-modal-api
+
+# Impact sign convention:
+#   Positive => household gains net income / state revenue goes up.
+#   Negative => household loses / cost to government.
+impact_sign: reform_minus_baseline
+
+# Provisions modeled
+modeled_provisions:
+  - name: "Maintain 3.99% individual income tax rate"
+    description: >
+      Keeps the individual income tax rate at 3.99% and repeals the
+      rate-reduction triggers. Under current law the consensus forecast
+      would otherwise reduce the rate to 3.49% in 2027 and 2.99% in 2028.
+    parameter: "gov.states.nc.tax.income.rate"
+    reform_values: {2027: 0.0399}
+    baseline_values: {2027: 0.0349, 2028: 0.0299}
+
+  - name: "Raise standard deduction (2027+)"
+    description: >
+      Raises the standard deduction by $1,000 (MFJ / surviving spouse),
+      $750 (HoH), and $500 (single / MFS) starting in tax year 2027.
+    parameter: "gov.states.nc.tax.income.deductions.standard.amount"
+    effective_year: 2027
+    reform_values:
+      SINGLE: 13250
+      SEPARATE: 13250
+      HEAD_OF_HOUSEHOLD: 19875
+      JOINT: 26500
+      SURVIVING_SPOUSE: 26500
+    baseline_values:
+      SINGLE: 12750
+      SEPARATE: 12750
+      HEAD_OF_HOUSEHOLD: 19125
+      JOINT: 25500
+      SURVIVING_SPOUSE: 25500
+
+  - name: "Refundable Working Families Tax Credit (WFTC, 2026+)"
+    description: >
+      Establishes a refundable Working Families Tax Credit equal to 10%
+      of the federal Earned Income Tax Credit.
+    parameter: "gov.contrib.states.nc.eitc.match"
+    effective_year: 2026
+    match_rate: 0.10
+    implementation_note: >
+      policyengine-us auto-applies the nc_eitc contributed reform when
+      gov.contrib.states.nc.eitc.in_effect is true.
+
+  - name: "Refundable child and dependent care tax credit (CDCC, 2026+)"
+    description: >
+      Establishes a refundable child and dependent care tax credit equal
+      to 30% of the federal credit.
+    parameter: "gov.contrib.states.nc.cdcc.match"
+    effective_year: 2026
+    match_rate: 0.30
+    implementation_note: >
+      policyengine-us auto-applies the nc_cdcc contributed reform when
+      gov.contrib.states.nc.cdcc.in_effect is true.
+
+# Provisions NOT modeled (displayed as a footnote on the Policy tab)
+unmodeled_provisions:
+  - name: "Sales Tax Back-to-School Holiday"
+    reason: "PolicyEngine-US does not cover NC sales tax."
+  - name: "Maintain 2% corporate income tax rate"
+    reason: "PolicyEngine-US does not cover corporate income tax."
+
+# Reform specification
+reform:
+  policyengine_package: policyengine-us
+  baseline_adjustments_path: "baseline_adjustments.json"
+  reform_path: "reform.json"
+
+# Simulation years
+years: [2026, 2027, 2028]
+default_year: 2027  # First year rate-maintenance and std-deduction provisions bite
+
+# API integration for household calculator
+api_integration:
+  endpoint: "https://api.policyengine.org/us/calculate"
+  method: POST
+  calls: 2  # baseline + reform
+  variables_requested:
+    - household_net_income
+    - employment_income
+    - adjusted_gross_income
+    - income_tax
+    - nc_income_tax
+
+# Precomputed data for state aggregate tab
+precomputed:
+  backend: modal
+  dataset: "hf://policyengine/policyengine-us-data/states/NC.h5"
+  pipeline_script: "scripts/modal_pipeline.py"
+  local_script: "scripts/pipeline.py"
+  worker_script: "scripts/_pipeline_worker.py"
+  output_directory: "frontend/public/data/"
+  output_files:
+    - distributional_impact.csv
+    - metrics.csv
+    - winners_losers.csv
+    - income_brackets.csv
+
+  microsimulation:
+    module: "nc_tax_calc/microsimulation.py"
+    function: "calculate_aggregate_impact"
+
+tech_stack:
+  framework: react-nextjs
+  nextjs_version: "14.x"
+  ui: tailwind-css
+  font: inter
+  testing: vitest
+  charts: recharts
+  state_management: react-query
+  package_manager: npm
+
+tabs:
+  - id: policy
+    label: "Policy overview"
+    description: "Summary of the Stein FY2026-27 tax proposals and the unmodeled provisions footnote."
+  - id: impact
+    label: "Household impact"
+    description: "Live household-level calculator for the impact of the Stein reform vs expected current law."
+  - id: aggregate
+    label: "State impact"
+    description: "NC microsimulation results for 2026, 2027, and 2028."
+
+embedding:
+  register_in_apps_json: true
+  slug: "nc-stein-2027-tax-proposals"
+  canonical_url: "https://policyengine.org/us/nc-stein-2027-tax-proposals"
+  tags: ["us", "north-carolina", "stein", "tax", "eitc", "cdcc", "standard-deduction"]
+
+# File structure
+structure:
+  root_files:
+    - reform.json
+    - baseline_adjustments.json
+    - pyproject.toml
+    - Makefile
+    - plan.yaml
+
+  nc_tax_calc:
+    - __init__.py
+    - household.py
+    - microsimulation.py
+    - reforms.py
+
+  scripts:
+    - pipeline.py
+    - _pipeline_worker.py
+    - modal_pipeline.py
+    - modal_district_pipeline.py
+    - compute_impacts.py
+    - generate_district_csv.py
+
+# Development commands
+dev_commands:
+  frontend:
+    install: "cd frontend && npm install"
+    dev: "make dev"
+    build: "cd frontend && npm run build"
+
+  data_generation:
+    local_all_years: "make pipeline"
+    modal_all_years: "make pipeline-modal"
+    districts_placeholder: "make pipeline-districts"
+
+  testing:
+    frontend: "cd frontend && npm test"
+    python: "pytest tests/"
+
+# Open follow-ups (not blocking initial dashboard):
+follow_ups:
+  - "scripts/modal_district_pipeline.py still contains Utah-specific code (UT-01..UT-04, FIPS 49). Retarget for NC-01..NC-14 (FIPS 37) when district-level Modal pipeline is desired."
+  - "USDistrictChoroplethMap currently renders NC districts as a labeled grid placeholder (no bundled NC GeoJSON). Replace with a real NC choropleth when map data is available."
+  - "Confirm NC CDCC reform (nc_cdcc) is merged in policyengine-us before running the microsimulation pipeline end-to-end."
+  - "Verify NC_REPRESENTATIVES roster in CongressionalDistrictImpact.tsx against the current 119th Congress."

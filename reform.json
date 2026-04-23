@@ -1,0 +1,33 @@
+{
+  "_comment": "Governor Josh Stein's FY2026-27 Budget tax proposals. Applied to the reform simulation (baseline receives baseline_adjustments.json). Provisions: (1) maintain 3.99% individual income tax rate in 2027 and 2028 (repealing triggered reductions), (2) raise standard deduction starting 2027 (+$1,000 JOINT/SURVIVING_SPOUSE, +$750 HEAD_OF_HOUSEHOLD, +$500 SINGLE/SEPARATE), (3) establish refundable Working Families Tax Credit = 10% of federal EITC starting 2026, (4) establish refundable child and dependent care tax credit = 30% of federal CDCC starting 2026. Sales Tax Back-to-School Holiday and maintenance of 2% corporate rate are not modeled.",
+  "gov.states.nc.tax.income.rate": {
+    "2027-01-01.2100-12-31": 0.0399
+  },
+  "gov.states.nc.tax.income.deductions.standard.amount.SINGLE": {
+    "2027-01-01.2100-12-31": 13250
+  },
+  "gov.states.nc.tax.income.deductions.standard.amount.SEPARATE": {
+    "2027-01-01.2100-12-31": 13250
+  },
+  "gov.states.nc.tax.income.deductions.standard.amount.HEAD_OF_HOUSEHOLD": {
+    "2027-01-01.2100-12-31": 19875
+  },
+  "gov.states.nc.tax.income.deductions.standard.amount.JOINT": {
+    "2027-01-01.2100-12-31": 26500
+  },
+  "gov.states.nc.tax.income.deductions.standard.amount.SURVIVING_SPOUSE": {
+    "2027-01-01.2100-12-31": 26500
+  },
+  "gov.contrib.states.nc.eitc.in_effect": {
+    "2026-01-01.2100-12-31": true
+  },
+  "gov.contrib.states.nc.eitc.match": {
+    "2026-01-01.2100-12-31": 0.1
+  },
+  "gov.contrib.states.nc.cdcc.in_effect": {
+    "2026-01-01.2100-12-31": true
+  },
+  "gov.contrib.states.nc.cdcc.match": {
+    "2026-01-01.2100-12-31": 0.3
+  }
+}
