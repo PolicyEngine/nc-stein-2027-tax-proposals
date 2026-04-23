@@ -124,8 +124,7 @@ export default function AggregateImpact({ triggered }: Props) {
   const sections = [
     { key: 'fiscal' as const, label: 'Budgetary impact' },
     { key: 'distributional' as const, label: 'Distributional impact' },
-    // Winners & losers tab temporarily hidden
-    // { key: 'winners' as const, label: 'Winners & losers' },
+    { key: 'winners' as const, label: 'Winners & losers' },
     { key: 'poverty' as const, label: 'Poverty impact' },
   ];
 
@@ -430,27 +429,112 @@ export default function AggregateImpact({ triggered }: Props) {
       })()}
 
       {/* ===== POVERTY IMPACT ===== */}
-      {activeSection === 'poverty' && (
-        <div className="space-y-6">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-3">Poverty impact</h3>
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
-              <p className="text-gray-700">
-                Poverty impact estimates for the Stein FY2026-27 package are
-                computed against the expected-current-law baseline (with
-                triggered rate cuts) using the Supplemental Poverty Measure.
+      {activeSection === 'poverty' && (() => {
+        const pov = data.poverty;
+        const pctChange = (baseline: number, reform: number) => {
+          if (!baseline || baseline === 0) return 0;
+          return ((reform - baseline) / baseline) * 100;
+        };
+        const povertyData = [
+          {
+            label: 'Overall',
+            value: pctChange(pov.poverty.all.baseline, pov.poverty.all.reform),
+          },
+          {
+            label: 'Child',
+            value: pctChange(pov.poverty.child.baseline, pov.poverty.child.reform),
+          },
+          {
+            label: 'Deep',
+            value: pctChange(pov.deep_poverty.all.baseline, pov.deep_poverty.all.reform),
+          },
+          {
+            label: 'Deep child',
+            value: pctChange(pov.deep_poverty.child.baseline, pov.deep_poverty.child.reform),
+          },
+        ];
+        const povMaxAbs = Math.max(...povertyData.map((d) => Math.abs(d.value)), 0.01);
+        const povNiceStep = (() => {
+          const rough = povMaxAbs / 3;
+          const mag = Math.pow(10, Math.floor(Math.log10(rough || 0.01)));
+          const residual = rough / mag;
+          if (residual <= 1) return mag;
+          if (residual <= 2) return 2 * mag;
+          if (residual <= 5) return 5 * mag;
+          return 10 * mag;
+        })();
+        const povNiceMax = Math.ceil(povMaxAbs / povNiceStep) * povNiceStep;
+        const povDomain: [number, number] = [-povNiceMax, povNiceMax];
+        const povTicks = Array.from(
+          { length: Math.round((2 * povNiceMax) / povNiceStep) + 1 },
+          (_, i) => -povNiceMax + i * povNiceStep,
+        );
+
+        return (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                Change in poverty rates (%)
+              </h3>
+              <p className="text-gray-700 mb-3">
+                Percent change in Supplemental Poverty Measure rates from
+                expected current law (with triggered rate cuts) to the Stein
+                FY2026-27 reform, for tax year {selectedYear}.
               </p>
-              <p className="text-xs text-gray-500 mt-3">
-                Note: The refundable Working Families Tax Credit and Child and
-                Dependent Care Credit can reduce poverty by delivering cash to
-                households with little or no North Carolina state tax
-                liability; the rate-maintenance provision primarily affects
-                households above the Supplemental Poverty Measure threshold.
+              <ResponsiveContainer width="100%" height={360}>
+                <BarChart data={povertyData} margin={CHART_MARGIN}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--chart-grid)" />
+                  <XAxis
+                    dataKey="label"
+                    tick={TICK_STYLE}
+                    stroke="var(--chart-axis)"
+                    label={{
+                      value: 'Poverty measure',
+                      position: 'insideBottom',
+                      offset: -15,
+                      style: { ...TICK_STYLE, fill: 'var(--chart-axis-label)' },
+                    }}
+                  />
+                  <YAxis
+                    domain={povDomain}
+                    ticks={povTicks}
+                    tickFormatter={(v: number) =>
+                      `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`
+                    }
+                    tick={TICK_STYLE}
+                    stroke="var(--chart-axis)"
+                    width={70}
+                  />
+                  <Tooltip
+                    content={
+                      <CustomTooltip
+                        formatter={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`}
+                      />
+                    }
+                  />
+                  <ReferenceLine y={0} stroke="var(--chart-axis)" strokeWidth={1} />
+                  <Bar dataKey="value" name="Change in poverty rate" radius={[2, 2, 0, 0]}>
+                    {povertyData.map((d, i) => (
+                      <Cell
+                        key={i}
+                        fill={d.value < 0 ? COLORS.positive : COLORS.negative}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <ChartWatermark />
+              <p className="text-xs text-gray-500 mt-2">
+                Negative values indicate the Stein reform lowers poverty vs
+                expected current law. Refundable Working Families Tax Credit
+                and the refundable child and dependent care credit deliver cash
+                to low-income NC households; rate maintenance alone primarily
+                affects households above the Supplemental Poverty threshold.
               </p>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <p className="text-sm text-gray-500 bg-gray-50 rounded-lg px-4 py-3 border border-gray-200">
         These estimates are static: they do not capture behavioral responses such as changes in labor supply, tax avoidance, or migration.
