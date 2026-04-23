@@ -1,1 +1,10 @@
-{"framework": "nextjs"}
+{
+  "framework": "nextjs",
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "/us/nc-stein-2027-tax-proposals",
+      "permanent": false
+    }
+  ]
+}
