@@ -124,6 +124,7 @@ function HouseholdImpactTab() {
   const [married, setMarried] = useState(initialValues.married);
   const [dependentAges, setDependentAges] = useState<number[]>(initialValues.dependents);
   const [income, setIncome] = useState(initialValues.income);
+  const [childcareExpenses, setChildcareExpenses] = useState(0);
   const [stateCode, setStateCode] = useState(initialValues.state);
   const [year, setYear] = useState<number>(2027);
   const [maxEarnings, setMaxEarnings] = useState(100000);
@@ -187,6 +188,7 @@ function HouseholdImpactTab() {
     year,
     max_earnings: maxEarnings,
     state_code: stateCode,
+    childcare_expenses: childcareExpenses,
   });
 
   const handleCalculate = () => {
@@ -302,7 +304,7 @@ function HouseholdImpactTab() {
             />
             {dependentAges.length > 0 && (
               <div className="mt-2">
-                <span className="block text-xs font-medium text-gray-500 mb-1">Age(s) - children under 6 qualify for the CTC</span>
+                <span className="block text-xs font-medium text-gray-500 mb-1">Age(s) - children under 13 qualify for the CDCC</span>
                 <div className="grid grid-cols-3 gap-1.5">
                 {dependentAges.map((age, i) => (
                   <input
@@ -324,6 +326,27 @@ function HouseholdImpactTab() {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Childcare expenses (CDCC) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-600 mb-1.5">
+              Annual childcare expenses
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+              <input
+                type="text"
+                value={formatNumber(childcareExpenses)}
+                onChange={(e) => setChildcareExpenses(parseNumber(e.target.value))}
+                placeholder="0"
+                aria-label="Annual childcare expenses"
+                className="w-full pl-6 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
+              />
+            </div>
+            <span className="mt-1 block text-xs text-gray-500">
+              Paid care for a qualifying dependent under 13; feeds the federal CDCC and NC 30% match.
+            </span>
           </div>
 
         </div>
