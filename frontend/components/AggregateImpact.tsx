@@ -453,7 +453,14 @@ export default function AggregateImpact({ triggered }: Props) {
             value: pctChange(pov.deep_poverty.child.baseline, pov.deep_poverty.child.reform),
           },
         ];
-        const povMaxAbs = Math.max(...povertyData.map((d) => Math.abs(d.value)), 0.01);
+        // One-sided domain when all values share a sign (the Stein package
+        // reduces poverty every year, so the domain should span from the
+        // deepest negative value up to 0 instead of extending symmetrically
+        // above zero).
+        const povValues = povertyData.map((d) => d.value);
+        const povMaxAbs = Math.max(...povValues.map(Math.abs), 0.01);
+        const allNegative = povValues.every((v) => v <= 0);
+        const allPositive = povValues.every((v) => v >= 0);
         const povNiceStep = (() => {
           const rough = povMaxAbs / 3;
           const mag = Math.pow(10, Math.floor(Math.log10(rough || 0.01)));
@@ -464,10 +471,15 @@ export default function AggregateImpact({ triggered }: Props) {
           return 10 * mag;
         })();
         const povNiceMax = Math.ceil(povMaxAbs / povNiceStep) * povNiceStep;
-        const povDomain: [number, number] = [-povNiceMax, povNiceMax];
+        const povDomain: [number, number] = allNegative
+          ? [-povNiceMax, 0]
+          : allPositive
+            ? [0, povNiceMax]
+            : [-povNiceMax, povNiceMax];
+        const tickCount = Math.round((povDomain[1] - povDomain[0]) / povNiceStep) + 1;
         const povTicks = Array.from(
-          { length: Math.round((2 * povNiceMax) / povNiceStep) + 1 },
-          (_, i) => -povNiceMax + i * povNiceStep,
+          { length: tickCount },
+          (_, i) => povDomain[0] + i * povNiceStep,
         );
 
         return (
