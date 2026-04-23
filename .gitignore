@@ -1,4 +1,4 @@
-frontend/.vercel
+.vercel
 # Python
 __pycache__/
 *.py[cod]
