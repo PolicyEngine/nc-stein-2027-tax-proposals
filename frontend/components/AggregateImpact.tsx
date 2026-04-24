@@ -242,14 +242,14 @@ export default function AggregateImpact({ triggered }: Props) {
                 </h3>
                 <p className="text-sm text-gray-600 mb-5">
                   Each bar stacks the isolated state revenue effect of a
-                  single Stein provision onto the running total. Positive
-                  steps (teal) add state revenue; negative steps (red)
-                  subtract. The grey &ldquo;Interaction&rdquo; step captures the
-                  residual between the sum of isolated provisions and the
-                  combined reform &mdash; e.g., rate maintenance and the
-                  standard-deduction raise jointly shift the state tax
-                  that feeds the federal SALT deduction. Switch the year
-                  using the selector above.
+                  single Stein provision onto the running total. Teal
+                  steps raise state revenue; grey steps cost state
+                  revenue. The &ldquo;Interaction&rdquo; step is the residual
+                  between the sum of isolated provisions and the combined
+                  reform &mdash; e.g., rate maintenance and the standard-
+                  deduction raise jointly shift the state tax that feeds
+                  the federal SALT deduction. Switch the year using the
+                  selector above.
                 </p>
                 <WaterfallCard
                   yearEntry={yearEntry}
@@ -681,18 +681,12 @@ function WaterfallCard({
     maxVal + span * 0.05,
   ];
 
-  const kindColor = (kind: WaterfallRow['kind']) => {
-    switch (kind) {
-      case 'positive':
-        return COLORS.positive;
-      case 'negative':
-        return COLORS.negative;
-      case 'interaction':
-        return 'var(--chart-no-change, #9ca3af)';
-      case 'total':
-        return 'var(--chart-tooltip-border, #334155)';
-    }
-  };
+  // Two-color waterfall: teal if the step raises state revenue, grey if
+  // the step costs state revenue. Applied uniformly to all bar kinds —
+  // including the interaction residual and the combined total — so a
+  // viewer can read the sign at a glance.
+  const barColor = (row: WaterfallRow) =>
+    row.delta >= 0 ? COLORS.positive : '#94a3b8';
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -752,7 +746,7 @@ function WaterfallCard({
           <ReferenceLine y={0} stroke="var(--chart-axis)" strokeWidth={1} />
           <Bar dataKey="range" radius={[2, 2, 0, 0]} isAnimationActive={false}>
             {rows.map((r, i) => (
-              <Cell key={i} fill={kindColor(r.kind)} />
+              <Cell key={i} fill={barColor(r)} />
             ))}
           </Bar>
         </BarChart>
