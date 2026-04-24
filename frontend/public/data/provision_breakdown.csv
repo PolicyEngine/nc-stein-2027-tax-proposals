@@ -1,0 +1,13 @@
+year,provision,provision_label,state_tax_revenue_impact,federal_tax_revenue_impact,budgetary_impact,households_affected
+2026,rate_maintenance,Maintain 3.99% income tax rate,0.0,0.0,0.0,0.0
+2026,standard_deduction,Raise standard deduction (2027),0.0,0.0,0.0,0.0
+2026,wftc,Working Families Tax Credit (10% of federal EITC),-163579078.0,0.0,-163579078.0,552844.0
+2026,cdcc,Child and Dependent Care Credit (30% of federal CDCC),-53101216.0,0.0,-53101216.0,155582.0
+2027,rate_maintenance,Maintain 3.99% income tax rate,2309917478.0,-32893841.0,2277023637.0,3050772.0
+2027,standard_deduction,Raise standard deduction (2027),-99115093.0,569758.0,-98545334.0,2970662.0
+2027,wftc,Working Families Tax Credit (10% of federal EITC),-165429704.0,0.0,-165429704.0,551061.0
+2027,cdcc,Child and Dependent Care Credit (30% of federal CDCC),-53063941.0,0.0,-53063941.0,156464.0
+2028,rate_maintenance,Maintain 3.99% income tax rate,4805168554.0,-66286312.0,4738882242.0,3084880.0
+2028,standard_deduction,Raise standard deduction (2027),-85636776.0,431626.0,-85205149.0,2995544.0
+2028,wftc,Working Families Tax Credit (10% of federal EITC),-166443971.0,0.0,-166443971.0,540064.0
+2028,cdcc,Child and Dependent Care Credit (30% of federal CDCC),-52945172.0,0.0,-52945172.0,157189.0

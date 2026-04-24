@@ -111,6 +111,138 @@ def _build_stein_reform():
     return Reform.from_dict(REFORM_DICT, country_id="us")
 
 
+# Per-provision dicts used for the budgetary breakdown. Each one is layered
+# ON TOP of the baseline (which already includes the triggered rate cuts), so
+# it captures the isolated effect of the single Stein provision vs. expected
+# current law. Individual impacts will NOT sum exactly to the combined total
+# because interactions exist (rate-maintenance affects state tax liability,
+# which changes the federal SALT deduction, etc.).
+PROVISION_DICTS = {
+    # Rate maintenance alone: rate stays at 3.99% (overrides the triggered
+    # 3.49% / 2.99% cuts in the baseline).
+    "rate_maintenance": {
+        "gov.states.nc.tax.income.rate": {
+            "2027-01-01.2100-12-31": 0.0399,
+        },
+    },
+    # Standard deduction increase alone.
+    "standard_deduction": {
+        "gov.states.nc.tax.income.deductions.standard.amount.SINGLE": {
+            "2027-01-01.2100-12-31": 13250,
+        },
+        "gov.states.nc.tax.income.deductions.standard.amount.SEPARATE": {
+            "2027-01-01.2100-12-31": 13250,
+        },
+        "gov.states.nc.tax.income.deductions.standard.amount.HEAD_OF_HOUSEHOLD": {
+            "2027-01-01.2100-12-31": 19875,
+        },
+        "gov.states.nc.tax.income.deductions.standard.amount.JOINT": {
+            "2027-01-01.2100-12-31": 26500,
+        },
+        "gov.states.nc.tax.income.deductions.standard.amount.SURVIVING_SPOUSE": {
+            "2027-01-01.2100-12-31": 26500,
+        },
+    },
+    # Working Families Tax Credit alone (10% of federal EITC, 2026+).
+    "wftc": {
+        "gov.contrib.states.nc.eitc.in_effect": {
+            "2026-01-01.2100-12-31": True,
+        },
+        "gov.contrib.states.nc.eitc.match": {
+            "2026-01-01.2100-12-31": 0.1,
+        },
+    },
+    # Child and Dependent Care Credit alone (30% of federal CDCC, 2026+).
+    "cdcc": {
+        "gov.contrib.states.nc.cdcc.in_effect": {
+            "2026-01-01.2100-12-31": True,
+        },
+        "gov.contrib.states.nc.cdcc.match": {
+            "2026-01-01.2100-12-31": 0.3,
+        },
+    },
+}
+
+
+def _build_provision_reform(provision: str):
+    """Build a reform = baseline adjustments + a single provision's overrides."""
+    from policyengine_core.reforms import Reform
+
+    merged = {**BASELINE_ADJUSTMENTS_DICT, **PROVISION_DICTS[provision]}
+    return Reform.from_dict(merged, country_id="us")
+
+
+@app.function(
+    image=image,
+    memory=16384,
+    timeout=1800,
+    retries=1,
+)
+def calculate_provision_breakdown(year: int) -> dict:
+    """Fiscal impact broken out by provision for one year.
+
+    Runs the baseline (expected current law with triggered rate cuts) once
+    and four "isolated provision" sims. Each isolated sim applies the
+    baseline adjustments plus ONE of: rate_maintenance, standard_deduction,
+    wftc, cdcc. The returned per-provision numbers are the isolated fiscal
+    effect of that provision vs expected current law. They will not sum
+    exactly to the combined total because interactions exist (e.g. state
+    tax change -> federal SALT deduction).
+    """
+    from policyengine_us import Microsimulation
+
+    print(f"Starting provision breakdown for year {year}...")
+
+    sim_baseline = Microsimulation(
+        dataset=NC_DATASET, reform=_build_baseline_reform()
+    )
+    baseline_nc = sim_baseline.calculate(
+        "nc_income_tax", period=year, map_to="household"
+    )
+    baseline_fed = sim_baseline.calculate(
+        "income_tax", period=year, map_to="household"
+    )
+    baseline_net = sim_baseline.calculate(
+        "household_net_income", period=year, map_to="household"
+    )
+    household_weight = sim_baseline.calculate("household_weight", period=year)
+
+    breakdown = {}
+    for provision in PROVISION_DICTS.keys():
+        print(f"  Running provision '{provision}'...")
+        sim = Microsimulation(
+            dataset=NC_DATASET, reform=_build_provision_reform(provision)
+        )
+        p_nc = sim.calculate("nc_income_tax", period=year, map_to="household")
+        p_fed = sim.calculate("income_tax", period=year, map_to="household")
+        p_net = sim.calculate(
+            "household_net_income", period=year, map_to="household"
+        )
+        # reform - baseline (positive state tax => state collects more)
+        state_impact = float((p_nc - baseline_nc).sum())
+        fed_impact = float((p_fed - baseline_fed).sum())
+        net_change = p_net - baseline_net
+        import numpy as np
+
+        affected_mask = np.abs(net_change) > 1
+        affected_households = float(
+            np.array(household_weight)[np.array(affected_mask)].sum()
+        )
+        breakdown[provision] = {
+            "state_tax_revenue_impact": state_impact,
+            "federal_tax_revenue_impact": fed_impact,
+            "budgetary_impact": state_impact + fed_impact,
+            "households_affected": affected_households,
+        }
+        print(
+            f"    {provision}: state={state_impact:+,.0f}  "
+            f"fed={fed_impact:+,.0f}  hh_affected={affected_households:,.0f}"
+        )
+
+    print(f"  Provision breakdown for {year} complete.")
+    return {"year": year, "breakdown": breakdown}
+
+
 @app.function(
     image=image,
     memory=16384,
@@ -483,10 +615,38 @@ def main(years: str = ""):
     results = list(calculate_year.map(target_years))
     results.sort(key=lambda r: r["year"])
 
+    breakdown_results = list(calculate_provision_breakdown.map(target_years))
+    breakdown_results.sort(key=lambda r: r["year"])
+
     distributional_rows = []
     metrics_rows = []
     winners_losers_rows = []
     income_bracket_rows = []
+    provision_breakdown_rows = []
+
+    PROVISION_LABELS = {
+        "rate_maintenance": "Maintain 3.99% income tax rate",
+        "standard_deduction": "Raise standard deduction (2027)",
+        "wftc": "Working Families Tax Credit (10% of federal EITC)",
+        "cdcc": "Child and Dependent Care Credit (30% of federal CDCC)",
+    }
+
+    for result in breakdown_results:
+        year = result["year"]
+        for provision, numbers in result["breakdown"].items():
+            provision_breakdown_rows.append({
+                "year": year,
+                "provision": provision,
+                "provision_label": PROVISION_LABELS.get(provision, provision),
+                "state_tax_revenue_impact": round(
+                    numbers["state_tax_revenue_impact"], 0
+                ),
+                "federal_tax_revenue_impact": round(
+                    numbers["federal_tax_revenue_impact"], 0
+                ),
+                "budgetary_impact": round(numbers["budgetary_impact"], 0),
+                "households_affected": round(numbers["households_affected"], 0),
+            })
 
     for result in results:
         year = result["year"]
@@ -604,5 +764,8 @@ def main(years: str = ""):
     merge_and_save(metrics_rows, "metrics.csv", target_years)
     merge_and_save(winners_losers_rows, "winners_losers.csv", target_years)
     merge_and_save(income_bracket_rows, "income_brackets.csv", target_years)
+    merge_and_save(
+        provision_breakdown_rows, "provision_breakdown.csv", target_years
+    )
 
     print(f"\nDone! All data saved to {output_dir}/")

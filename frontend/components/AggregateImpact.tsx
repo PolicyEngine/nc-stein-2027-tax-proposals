@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import {
   useAggregateImpact,
+  useProvisionBreakdown,
   NC_DASHBOARD_DEFAULT_YEAR,
   NC_DASHBOARD_YEARS,
 } from '@/hooks/useAggregateImpact';
@@ -72,6 +73,7 @@ export default function AggregateImpact({ triggered }: Props) {
   // deduction provisions apply.
   const [selectedYear, setSelectedYear] = useState<number>(NC_DASHBOARD_DEFAULT_YEAR);
   const { data, isLoading, error } = useAggregateImpact(triggered, selectedYear);
+  const { data: breakdown } = useProvisionBreakdown(triggered, selectedYear);
   const [activeSection, setActiveSection] = useState<
     'fiscal' | 'distributional' | 'winners' | 'poverty'
   >('fiscal');
@@ -222,6 +224,113 @@ export default function AggregateImpact({ triggered }: Props) {
               </div>
             </div>
           </div>
+
+          {/* Provision breakdown */}
+          {breakdown && breakdown.length > 0 && (() => {
+            const sumState = breakdown.reduce((s, r) => s + r.state_tax_revenue_impact, 0);
+            const sumFederal = breakdown.reduce((s, r) => s + r.federal_tax_revenue_impact, 0);
+            const sumTotal = breakdown.reduce((s, r) => s + r.budgetary_impact, 0);
+            const stateResidual = data.budget.state_tax_revenue_impact - sumState;
+            const federalResidual = data.budget.federal_tax_revenue_impact - sumFederal;
+            const totalResidual = data.budget.budgetary_impact - sumTotal;
+
+            return (
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                  Budgetary impact by provision ({selectedYear})
+                </h3>
+                <p className="text-sm text-gray-600 mb-3">
+                  Each row shows the isolated fiscal effect of a single
+                  provision vs. expected current law (with the triggered
+                  rate cuts). Because provisions interact (for example,
+                  the rate-maintenance + standard-deduction changes both
+                  shift state tax liability, which feeds the federal SALT
+                  deduction), individual rows do not sum exactly to the
+                  combined total shown above.
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-300">
+                        <th className="text-left px-4 py-3 font-medium text-gray-900">Provision</th>
+                        <th className="text-right px-4 py-3 font-medium text-gray-900">State revenue</th>
+                        <th className="text-right px-4 py-3 font-medium text-gray-900">Federal revenue</th>
+                        <th className="text-right px-4 py-3 font-medium text-gray-900">Total budgetary</th>
+                        <th className="text-right px-4 py-3 font-medium text-gray-900">Households affected</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {breakdown.map((row) => (
+                        <tr key={row.provision} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-3 text-gray-900">{row.provision_label}</td>
+                          <td
+                            className="px-4 py-3 font-semibold text-right"
+                            style={{ color: row.state_tax_revenue_impact >= 0 ? COLORS.positive : COLORS.negative }}
+                          >
+                            {formatBillions(row.state_tax_revenue_impact)}
+                          </td>
+                          <td
+                            className="px-4 py-3 font-semibold text-right"
+                            style={{ color: row.federal_tax_revenue_impact >= 0 ? COLORS.positive : COLORS.negative }}
+                          >
+                            {formatBillions(row.federal_tax_revenue_impact)}
+                          </td>
+                          <td
+                            className="px-4 py-3 font-semibold text-right"
+                            style={{ color: row.budgetary_impact >= 0 ? COLORS.positive : COLORS.negative }}
+                          >
+                            {formatBillions(row.budgetary_impact)}
+                          </td>
+                          <td className="px-4 py-3 text-gray-700 text-right">
+                            {Math.round(row.households_affected).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                      <tr className="border-t-2 border-gray-400 bg-gray-50">
+                        <td className="px-4 py-3 text-gray-900 font-medium">
+                          Sum of isolated provisions
+                        </td>
+                        <td
+                          className="px-4 py-3 font-semibold text-right"
+                          style={{ color: sumState >= 0 ? COLORS.positive : COLORS.negative }}
+                        >
+                          {formatBillions(sumState)}
+                        </td>
+                        <td
+                          className="px-4 py-3 font-semibold text-right"
+                          style={{ color: sumFederal >= 0 ? COLORS.positive : COLORS.negative }}
+                        >
+                          {formatBillions(sumFederal)}
+                        </td>
+                        <td
+                          className="px-4 py-3 font-semibold text-right"
+                          style={{ color: sumTotal >= 0 ? COLORS.positive : COLORS.negative }}
+                        >
+                          {formatBillions(sumTotal)}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 text-right">—</td>
+                      </tr>
+                      <tr className="bg-gray-50 text-gray-500">
+                        <td className="px-4 py-3 text-xs italic">
+                          Interaction residual (combined &minus; sum)
+                        </td>
+                        <td className="px-4 py-3 text-xs text-right italic">
+                          {formatBillions(stateResidual)}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-right italic">
+                          {formatBillions(federalResidual)}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-right italic">
+                          {formatBillions(totalResidual)}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-right italic">—</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Income bracket table */}
           <div>

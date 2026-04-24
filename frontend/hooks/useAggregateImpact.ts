@@ -193,6 +193,47 @@ export function useTenYearFederalTotal(enabled: boolean) {
   });
 }
 
+export interface ProvisionBreakdownRow {
+  year: number;
+  provision: string;
+  provision_label: string;
+  state_tax_revenue_impact: number;
+  federal_tax_revenue_impact: number;
+  budgetary_impact: number;
+  households_affected: number;
+}
+
+export function useProvisionBreakdown(
+  enabled: boolean,
+  year: number = NC_DASHBOARD_DEFAULT_YEAR,
+) {
+  return useQuery<ProvisionBreakdownRow[]>({
+    queryKey: ["provisionBreakdown", year],
+    queryFn: async () => {
+      const rows = await fetchCSV("provision_breakdown.csv");
+      return rows
+        .filter((r) => Number(r.year) === year)
+        .map(
+          (r) =>
+            ({
+              year: Number(r.year),
+              provision: String(r.provision),
+              provision_label: String(r.provision_label),
+              state_tax_revenue_impact: Number(r.state_tax_revenue_impact),
+              federal_tax_revenue_impact: Number(
+                r.federal_tax_revenue_impact,
+              ),
+              budgetary_impact: Number(r.budgetary_impact),
+              households_affected: Number(r.households_affected),
+            }) as ProvisionBreakdownRow,
+        );
+    },
+    enabled,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+}
+
 export function useTenYearStateTotal(enabled: boolean) {
   return useQuery<number>({
     queryKey: ["tenYearStateTotal"],
