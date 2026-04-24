@@ -72,12 +72,14 @@ const REFORM_POLICY: Record<string, Record<string, number | boolean>> = {
   "gov.contrib.states.nc.eitc.match": {
     "2026-01-01.2100-12-31": 0.1,
   },
-  "gov.contrib.states.nc.cdcc.in_effect": {
-    "2026-01-01.2100-12-31": true,
-  },
-  "gov.contrib.states.nc.cdcc.match": {
-    "2026-01-01.2100-12-31": 0.3,
-  },
+  // NOTE: gov.contrib.states.nc.cdcc.* is intentionally omitted here because
+  // the live api.policyengine.org is pinned to policyengine-us 1.634.9 (as
+  // of 2026-04-24) which predates PR #8142 (merged into 1.666.0). Including
+  // these parameters makes /us/calculate 500 with a missing-parameter error
+  // and breaks the household calculator. Re-add once the hosted API catches
+  // up to >=1.666.0 so the Child and Dependent Care Credit provision shows
+  // in the household chart. The Modal microsim CSVs already include the
+  // CDCC effect — this fallback only affects the live household calc.
 };
 
 function addMemberToUnits(

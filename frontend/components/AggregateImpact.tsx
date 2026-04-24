@@ -445,11 +445,11 @@ export default function AggregateImpact({ triggered }: Props) {
             value: pctChange(pov.poverty.child.baseline, pov.poverty.child.reform),
           },
           {
-            label: 'Deep',
+            label: 'Deep poverty',
             value: pctChange(pov.deep_poverty.all.baseline, pov.deep_poverty.all.reform),
           },
           {
-            label: 'Deep child',
+            label: 'Deep child poverty',
             value: pctChange(pov.deep_poverty.child.baseline, pov.deep_poverty.child.reform),
           },
         ];

@@ -63,28 +63,6 @@ export default function PolicyOverview() {
             </p>
           </div>
         </div>
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-6">
-          <h3 className="font-semibold text-yellow-900 mb-2">
-            Provisions not modeled
-          </h3>
-          <p className="text-sm text-yellow-900 mb-2">
-            Two provisions in Governor Stein&apos;s FY2026-27 tax package are
-            not included in this analysis because PolicyEngine-US does not
-            currently model them:
-          </p>
-          <ul className="list-disc pl-5 text-sm text-yellow-900 space-y-1">
-            <li>
-              <strong>Sales Tax Back-to-School Holiday</strong> &mdash; not
-              modeled because PolicyEngine-US does not cover North Carolina
-              sales tax.
-            </li>
-            <li>
-              <strong>Maintenance of the 2% corporate income tax rate</strong>
-              &nbsp;&mdash; not modeled because PolicyEngine-US does not cover
-              corporate income tax.
-            </li>
-          </ul>
-        </div>
       </div>
 
       {/* Parameter changes table */}
@@ -172,6 +150,66 @@ export default function PolicyOverview() {
                 </a>
               </li>
             </ul>
+          </div>
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <h4 className="font-semibold text-gray-800 mb-2">
+              Provisions not modeled
+            </h4>
+            <p className="text-sm text-gray-700 mb-2">
+              Two provisions in the Stein FY2026-27 tax package are not
+              included in this analysis because PolicyEngine-US does not
+              currently model them:
+            </p>
+            <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
+              <li>
+                <strong>Sales Tax Back-to-School Holiday</strong> &mdash;
+                PolicyEngine-US does not cover North Carolina sales tax.
+              </li>
+              <li>
+                <strong>Maintenance of the 2% corporate income tax rate</strong>
+                &nbsp;&mdash; PolicyEngine-US does not cover corporate income
+                tax.
+              </li>
+            </ul>
+          </div>
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <h4 className="font-semibold text-gray-800 mb-2">
+              Computation details
+            </h4>
+            <p className="text-sm text-gray-700">
+              Aggregate impacts for 2026, 2027, and 2028 were computed on
+              Modal against the North Carolina state-level microsimulation
+              dataset (<code>hf://policyengine/policyengine-us-data/states/NC.h5</code>)
+              using <code>policyengine-us</code> at commit{' '}
+              <a
+                href="https://github.com/PolicyEngine/policyengine-us/commit/cd40083a6e7f81d303a532501f2026798a53d50e"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary-600 hover:underline"
+              >
+                cd40083a6e
+              </a>
+              {' '}(includes PR{' '}
+              <a
+                href="https://github.com/PolicyEngine/policyengine-us/pull/8142"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary-600 hover:underline"
+              >
+                #8142
+              </a>
+              {' '}&mdash; NC CDCC contrib reform plus the EITC / CDCC
+              stacking fix). Dashboard source:{' '}
+              <a
+                href="https://github.com/PolicyEngine/nc-stein-2027-tax-proposals"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary-600 hover:underline"
+              >
+                PolicyEngine/nc-stein-2027-tax-proposals
+              </a>
+              .
+            </p>
           </div>
         </div>
       </div>
