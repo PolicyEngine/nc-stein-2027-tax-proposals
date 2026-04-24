@@ -234,6 +234,72 @@ export function useProvisionBreakdown(
   });
 }
 
+export interface YearBudgetaryBreakdown {
+  year: number;
+  combinedStateTaxRevenueImpact: number;
+  combinedFederalTaxRevenueImpact: number;
+  combinedBudgetaryImpact: number;
+  provisions: ProvisionBreakdownRow[];
+}
+
+/** Returns per-year provision breakdown and combined totals for all years
+ * present in the CSVs (2026, 2027, 2028). One query fetches both
+ * provision_breakdown.csv and metrics.csv so a single React Query call
+ * drives the year-over-year waterfall charts. */
+export function useBudgetaryBreakdownAllYears(enabled: boolean) {
+  return useQuery<YearBudgetaryBreakdown[]>({
+    queryKey: ["budgetaryBreakdownAllYears"],
+    queryFn: async () => {
+      const [breakdownRows, metricsRows] = await Promise.all([
+        fetchCSV("provision_breakdown.csv"),
+        fetchCSV("metrics.csv"),
+      ]);
+
+      const byYear = new Map<number, YearBudgetaryBreakdown>();
+
+      for (const r of breakdownRows) {
+        const year = Number(r.year);
+        if (!byYear.has(year)) {
+          byYear.set(year, {
+            year,
+            combinedStateTaxRevenueImpact: 0,
+            combinedFederalTaxRevenueImpact: 0,
+            combinedBudgetaryImpact: 0,
+            provisions: [],
+          });
+        }
+        byYear.get(year)!.provisions.push({
+          year,
+          provision: String(r.provision),
+          provision_label: String(r.provision_label),
+          state_tax_revenue_impact: Number(r.state_tax_revenue_impact),
+          federal_tax_revenue_impact: Number(r.federal_tax_revenue_impact),
+          budgetary_impact: Number(r.budgetary_impact),
+          households_affected: Number(r.households_affected),
+        });
+      }
+
+      for (const r of metricsRows) {
+        const year = Number(r.year);
+        if (!byYear.has(year)) continue;
+        const entry = byYear.get(year)!;
+        if (r.metric === "state_tax_revenue_impact") {
+          entry.combinedStateTaxRevenueImpact = Number(r.value);
+        } else if (r.metric === "federal_tax_revenue_impact") {
+          entry.combinedFederalTaxRevenueImpact = Number(r.value);
+        } else if (r.metric === "budgetary_impact") {
+          entry.combinedBudgetaryImpact = Number(r.value);
+        }
+      }
+
+      return Array.from(byYear.values()).sort((a, b) => a.year - b.year);
+    },
+    enabled,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+}
+
 export function useTenYearStateTotal(enabled: boolean) {
   return useQuery<number>({
     queryKey: ["tenYearStateTotal"],

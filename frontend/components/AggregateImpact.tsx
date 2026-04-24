@@ -4,8 +4,13 @@ import { useState } from 'react';
 import {
   useAggregateImpact,
   useProvisionBreakdown,
+  useBudgetaryBreakdownAllYears,
   NC_DASHBOARD_DEFAULT_YEAR,
   NC_DASHBOARD_YEARS,
+} from '@/hooks/useAggregateImpact';
+import type {
+  ProvisionBreakdownRow,
+  YearBudgetaryBreakdown,
 } from '@/hooks/useAggregateImpact';
 import {
   BarChart,
@@ -74,6 +79,7 @@ export default function AggregateImpact({ triggered }: Props) {
   const [selectedYear, setSelectedYear] = useState<number>(NC_DASHBOARD_DEFAULT_YEAR);
   const { data, isLoading, error } = useAggregateImpact(triggered, selectedYear);
   const { data: breakdown } = useProvisionBreakdown(triggered, selectedYear);
+  const { data: allBreakdowns } = useBudgetaryBreakdownAllYears(triggered);
   const [activeSection, setActiveSection] = useState<
     'fiscal' | 'distributional' | 'winners' | 'poverty'
   >('fiscal');
@@ -331,6 +337,34 @@ export default function AggregateImpact({ triggered }: Props) {
               </div>
             );
           })()}
+
+          {/* Per-year waterfall charts */}
+          {allBreakdowns && allBreakdowns.length > 0 && (
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                How each provision adds up (waterfall)
+              </h3>
+              <p className="text-sm text-gray-600 mb-5">
+                Each bar stacks the isolated state revenue effect of a
+                single Stein provision onto the running total. Positive
+                values add state revenue (bars step up from left to
+                right); negative values subtract. The grey &ldquo;Interaction&rdquo;
+                step captures the residual between the sum of isolated
+                provisions and the combined reform &mdash; e.g., rate
+                maintenance and the standard-deduction raise jointly shift
+                the state tax that feeds the federal SALT deduction.
+              </p>
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                {allBreakdowns.map((yearEntry) => (
+                  <WaterfallCard
+                    key={yearEntry.year}
+                    yearEntry={yearEntry}
+                    formatBillions={formatBillions}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Income bracket table */}
           <div>
@@ -660,6 +694,176 @@ export default function AggregateImpact({ triggered }: Props) {
       <p className="text-sm text-gray-500 bg-gray-50 rounded-lg px-4 py-3 border border-gray-200">
         These estimates are static: they do not capture behavioral responses such as changes in labor supply, tax avoidance, or migration.
       </p>
+    </div>
+  );
+}
+
+// ===== Waterfall helper =====
+
+// Fixed order for waterfall steps.
+const PROVISION_ORDER = ['rate_maintenance', 'standard_deduction', 'wftc', 'cdcc'] as const;
+
+interface WaterfallRow {
+  name: string;
+  delta: number;
+  start: number;
+  end: number;
+  range: [number, number];
+  kind: 'positive' | 'negative' | 'interaction' | 'total';
+}
+
+function buildWaterfallRows(
+  yearEntry: YearBudgetaryBreakdown,
+): WaterfallRow[] {
+  // State revenue is the most interpretable against the Governor's estimate,
+  // so we anchor the waterfall on state_tax_revenue_impact.
+  const provisionsByKey = new Map<string, ProvisionBreakdownRow>();
+  yearEntry.provisions.forEach((p) => provisionsByKey.set(p.provision, p));
+
+  const rows: WaterfallRow[] = [];
+  let running = 0;
+
+  for (const key of PROVISION_ORDER) {
+    const p = provisionsByKey.get(key);
+    if (!p) continue;
+    const delta = p.state_tax_revenue_impact;
+    const start = running;
+    const end = running + delta;
+    rows.push({
+      name: p.provision_label,
+      delta,
+      start,
+      end,
+      range: [Math.min(start, end), Math.max(start, end)],
+      kind: delta >= 0 ? 'positive' : 'negative',
+    });
+    running = end;
+  }
+
+  const residual = yearEntry.combinedStateTaxRevenueImpact - running;
+  if (Math.abs(residual) > 1) {
+    const start = running;
+    const end = running + residual;
+    rows.push({
+      name: 'Interaction',
+      delta: residual,
+      start,
+      end,
+      range: [Math.min(start, end), Math.max(start, end)],
+      kind: 'interaction',
+    });
+    running = end;
+  }
+
+  rows.push({
+    name: 'Combined total',
+    delta: yearEntry.combinedStateTaxRevenueImpact,
+    start: 0,
+    end: yearEntry.combinedStateTaxRevenueImpact,
+    range: [
+      Math.min(0, yearEntry.combinedStateTaxRevenueImpact),
+      Math.max(0, yearEntry.combinedStateTaxRevenueImpact),
+    ],
+    kind: 'total',
+  });
+
+  return rows;
+}
+
+function WaterfallCard({
+  yearEntry,
+  formatBillions,
+}: {
+  yearEntry: YearBudgetaryBreakdown;
+  formatBillions: (value: number) => string;
+}) {
+  const rows = buildWaterfallRows(yearEntry);
+
+  const minVal = Math.min(0, ...rows.map((r) => r.range[0]));
+  const maxVal = Math.max(0, ...rows.map((r) => r.range[1]));
+  // Pad the domain by 5% so the tallest bar isn't flush against the edge.
+  const span = maxVal - minVal || 1;
+  const domain: [number, number] = [
+    minVal - span * 0.05,
+    maxVal + span * 0.05,
+  ];
+
+  const kindColor = (kind: WaterfallRow['kind']) => {
+    switch (kind) {
+      case 'positive':
+        return COLORS.positive;
+      case 'negative':
+        return COLORS.negative;
+      case 'interaction':
+        return 'var(--chart-no-change, #9ca3af)';
+      case 'total':
+        return 'var(--chart-tooltip-border, #334155)';
+    }
+  };
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-4">
+      <div className="flex items-baseline justify-between mb-2">
+        <h4 className="font-semibold text-gray-800">Tax year {yearEntry.year}</h4>
+        <span
+          className="text-sm font-semibold"
+          style={{
+            color:
+              yearEntry.combinedStateTaxRevenueImpact >= 0
+                ? COLORS.positive
+                : COLORS.negative,
+          }}
+        >
+          {formatBillions(yearEntry.combinedStateTaxRevenueImpact)} state revenue
+        </span>
+      </div>
+      <ResponsiveContainer width="100%" height={280}>
+        <BarChart
+          data={rows}
+          margin={{ top: 16, right: 16, bottom: 60, left: 60 }}
+        >
+          <CartesianGrid
+            strokeDasharray="3 3"
+            vertical={false}
+            stroke="var(--chart-grid)"
+          />
+          <XAxis
+            dataKey="name"
+            tick={{ ...TICK_STYLE, fontSize: 10 }}
+            stroke="var(--chart-axis)"
+            angle={-25}
+            textAnchor="end"
+            interval={0}
+            height={60}
+          />
+          <YAxis
+            domain={domain}
+            tickFormatter={(v: number) => formatBillions(v)}
+            tick={TICK_STYLE}
+            stroke="var(--chart-axis)"
+            width={70}
+          />
+          <Tooltip
+            content={
+              <CustomTooltip
+                formatter={(v, name) => {
+                  // Recharts hands us the [min, max] array for range; we
+                  // only want to display the delta the bar represents.
+                  const row = rows.find((r) => r.name === name);
+                  if (row) return formatBillions(row.delta);
+                  return formatBillions(Array.isArray(v) ? v[1] - v[0] : v);
+                }}
+              />
+            }
+          />
+          <ReferenceLine y={0} stroke="var(--chart-axis)" strokeWidth={1} />
+          <Bar dataKey="range" radius={[2, 2, 0, 0]} isAnimationActive={false}>
+            {rows.map((r, i) => (
+              <Cell key={i} fill={kindColor(r.kind)} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   );
 }
