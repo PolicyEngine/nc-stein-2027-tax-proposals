@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import {
   useAggregateImpact,
-  useProvisionBreakdown,
   useBudgetaryBreakdownAllYears,
   NC_DASHBOARD_DEFAULT_YEAR,
   NC_DASHBOARD_YEARS,
@@ -78,7 +77,6 @@ export default function AggregateImpact({ triggered }: Props) {
   // deduction provisions apply.
   const [selectedYear, setSelectedYear] = useState<number>(NC_DASHBOARD_DEFAULT_YEAR);
   const { data, isLoading, error } = useAggregateImpact(triggered, selectedYear);
-  const { data: breakdown } = useProvisionBreakdown(triggered, selectedYear);
   const { data: allBreakdowns } = useBudgetaryBreakdownAllYears(triggered);
   const [activeSection, setActiveSection] = useState<
     'fiscal' | 'distributional' | 'winners' | 'poverty'
@@ -231,140 +229,35 @@ export default function AggregateImpact({ triggered }: Props) {
             </div>
           </div>
 
-          {/* Provision breakdown */}
-          {breakdown && breakdown.length > 0 && (() => {
-            const sumState = breakdown.reduce((s, r) => s + r.state_tax_revenue_impact, 0);
-            const sumFederal = breakdown.reduce((s, r) => s + r.federal_tax_revenue_impact, 0);
-            const sumTotal = breakdown.reduce((s, r) => s + r.budgetary_impact, 0);
-            const stateResidual = data.budget.state_tax_revenue_impact - sumState;
-            const federalResidual = data.budget.federal_tax_revenue_impact - sumFederal;
-            const totalResidual = data.budget.budgetary_impact - sumTotal;
-
+          {/* Provision breakdown waterfall for the selected year */}
+          {allBreakdowns && allBreakdowns.length > 0 && (() => {
+            const yearEntry = allBreakdowns.find(
+              (b) => b.year === selectedYear,
+            );
+            if (!yearEntry) return null;
             return (
               <div>
                 <h3 className="text-lg font-semibold text-gray-800 mb-3">
-                  Budgetary impact by provision ({selectedYear})
+                  How each provision adds up ({selectedYear})
                 </h3>
-                <p className="text-sm text-gray-600 mb-3">
-                  Each row shows the isolated fiscal effect of a single
-                  provision vs. expected current law (with the triggered
-                  rate cuts). Because provisions interact (for example,
-                  the rate-maintenance + standard-deduction changes both
-                  shift state tax liability, which feeds the federal SALT
-                  deduction), individual rows do not sum exactly to the
-                  combined total shown above.
+                <p className="text-sm text-gray-600 mb-5">
+                  Each bar stacks the isolated state revenue effect of a
+                  single Stein provision onto the running total. Positive
+                  steps (teal) add state revenue; negative steps (red)
+                  subtract. The grey &ldquo;Interaction&rdquo; step captures the
+                  residual between the sum of isolated provisions and the
+                  combined reform &mdash; e.g., rate maintenance and the
+                  standard-deduction raise jointly shift the state tax
+                  that feeds the federal SALT deduction. Switch the year
+                  using the selector above.
                 </p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-300">
-                        <th className="text-left px-4 py-3 font-medium text-gray-900">Provision</th>
-                        <th className="text-right px-4 py-3 font-medium text-gray-900">State revenue</th>
-                        <th className="text-right px-4 py-3 font-medium text-gray-900">Federal revenue</th>
-                        <th className="text-right px-4 py-3 font-medium text-gray-900">Total budgetary</th>
-                        <th className="text-right px-4 py-3 font-medium text-gray-900">Households affected</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {breakdown.map((row) => (
-                        <tr key={row.provision} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-4 py-3 text-gray-900">{row.provision_label}</td>
-                          <td
-                            className="px-4 py-3 font-semibold text-right"
-                            style={{ color: row.state_tax_revenue_impact >= 0 ? COLORS.positive : COLORS.negative }}
-                          >
-                            {formatBillions(row.state_tax_revenue_impact)}
-                          </td>
-                          <td
-                            className="px-4 py-3 font-semibold text-right"
-                            style={{ color: row.federal_tax_revenue_impact >= 0 ? COLORS.positive : COLORS.negative }}
-                          >
-                            {formatBillions(row.federal_tax_revenue_impact)}
-                          </td>
-                          <td
-                            className="px-4 py-3 font-semibold text-right"
-                            style={{ color: row.budgetary_impact >= 0 ? COLORS.positive : COLORS.negative }}
-                          >
-                            {formatBillions(row.budgetary_impact)}
-                          </td>
-                          <td className="px-4 py-3 text-gray-700 text-right">
-                            {Math.round(row.households_affected).toLocaleString()}
-                          </td>
-                        </tr>
-                      ))}
-                      <tr className="border-t-2 border-gray-400 bg-gray-50">
-                        <td className="px-4 py-3 text-gray-900 font-medium">
-                          Sum of isolated provisions
-                        </td>
-                        <td
-                          className="px-4 py-3 font-semibold text-right"
-                          style={{ color: sumState >= 0 ? COLORS.positive : COLORS.negative }}
-                        >
-                          {formatBillions(sumState)}
-                        </td>
-                        <td
-                          className="px-4 py-3 font-semibold text-right"
-                          style={{ color: sumFederal >= 0 ? COLORS.positive : COLORS.negative }}
-                        >
-                          {formatBillions(sumFederal)}
-                        </td>
-                        <td
-                          className="px-4 py-3 font-semibold text-right"
-                          style={{ color: sumTotal >= 0 ? COLORS.positive : COLORS.negative }}
-                        >
-                          {formatBillions(sumTotal)}
-                        </td>
-                        <td className="px-4 py-3 text-gray-500 text-right">—</td>
-                      </tr>
-                      <tr className="bg-gray-50 text-gray-500">
-                        <td className="px-4 py-3 text-xs italic">
-                          Interaction residual (combined &minus; sum)
-                        </td>
-                        <td className="px-4 py-3 text-xs text-right italic">
-                          {formatBillions(stateResidual)}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-right italic">
-                          {formatBillions(federalResidual)}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-right italic">
-                          {formatBillions(totalResidual)}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-right italic">—</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                <WaterfallCard
+                  yearEntry={yearEntry}
+                  formatBillions={formatBillions}
+                />
               </div>
             );
           })()}
-
-          {/* Per-year waterfall charts */}
-          {allBreakdowns && allBreakdowns.length > 0 && (
-            <div>
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">
-                How each provision adds up (waterfall)
-              </h3>
-              <p className="text-sm text-gray-600 mb-5">
-                Each bar stacks the isolated state revenue effect of a
-                single Stein provision onto the running total. Positive
-                values add state revenue (bars step up from left to
-                right); negative values subtract. The grey &ldquo;Interaction&rdquo;
-                step captures the residual between the sum of isolated
-                provisions and the combined reform &mdash; e.g., rate
-                maintenance and the standard-deduction raise jointly shift
-                the state tax that feeds the federal SALT deduction.
-              </p>
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                {allBreakdowns.map((yearEntry) => (
-                  <WaterfallCard
-                    key={yearEntry.year}
-                    yearEntry={yearEntry}
-                    formatBillions={formatBillions}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Income bracket table */}
           <div>
@@ -817,10 +710,10 @@ function WaterfallCard({
           {formatBillions(yearEntry.combinedStateTaxRevenueImpact)} state revenue
         </span>
       </div>
-      <ResponsiveContainer width="100%" height={280}>
+      <ResponsiveContainer width="100%" height={380}>
         <BarChart
           data={rows}
-          margin={{ top: 16, right: 16, bottom: 60, left: 60 }}
+          margin={{ top: 20, right: 24, bottom: 70, left: 80 }}
         >
           <CartesianGrid
             strokeDasharray="3 3"
@@ -829,12 +722,12 @@ function WaterfallCard({
           />
           <XAxis
             dataKey="name"
-            tick={{ ...TICK_STYLE, fontSize: 10 }}
+            tick={{ ...TICK_STYLE, fontSize: 11 }}
             stroke="var(--chart-axis)"
-            angle={-25}
+            angle={-20}
             textAnchor="end"
             interval={0}
-            height={60}
+            height={70}
           />
           <YAxis
             domain={domain}
