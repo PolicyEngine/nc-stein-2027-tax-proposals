@@ -47,7 +47,7 @@ export default function ImpactAnalysis({ request, triggered, maxEarnings }: Prop
           <p className="text-yellow-700">
             The PolicyEngine API is being updated to reflect the North Carolina
             Stein FY2026-27 tax proposals. Please check back soon, or view the
-            <strong> Aggregate impact</strong> tab for precomputed results.
+            <strong> Statewide impact</strong> tab for precomputed results.
           </p>
         ) : (
           <p className="text-yellow-700">{errorMessage}</p>
