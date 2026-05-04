@@ -12,17 +12,28 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { useHouseholdImpact } from '@/hooks/useHouseholdImpact';
-import type { HouseholdRequest } from '@/lib/types';
+import type { HouseholdImpactResponse, HouseholdRequest } from '@/lib/types';
 import ChartWatermark from './ChartWatermark';
 
 interface Props {
   request: HouseholdRequest | null;
   triggered: boolean;
   maxEarnings?: number;
+  /** When supplied, the chart renders this precomputed payload instead
+   * of firing a live /us/calculate request. */
+  precomputed?: HouseholdImpactResponse | null;
 }
 
-export default function ImpactAnalysis({ request, triggered, maxEarnings }: Props) {
-  const { data, isLoading, error } = useHouseholdImpact(request, triggered);
+export default function ImpactAnalysis({
+  request,
+  triggered,
+  maxEarnings,
+  precomputed,
+}: Props) {
+  const liveQuery = useHouseholdImpact(request, triggered && !precomputed);
+  const data = precomputed ?? liveQuery.data;
+  const isLoading = !precomputed && liveQuery.isLoading;
+  const error = precomputed ? null : liveQuery.error;
 
   if (!triggered) return null;
 
