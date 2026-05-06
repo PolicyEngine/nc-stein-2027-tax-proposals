@@ -13,8 +13,6 @@ export interface BenefitAtIncome {
   baseline: number;
   reform: number;
   difference: number;
-  federal_eitc_change: number;
-  state_eitc_change: number;
   federal_tax_change: number;
   state_tax_change: number;
   net_income_change: number;

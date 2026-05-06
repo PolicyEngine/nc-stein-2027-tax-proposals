@@ -84,29 +84,15 @@ export default function ImpactAnalysis({
 
   const benefitData = data.benefit_at_income;
 
-  // Prefer explicit fields added by the API client. Fall back to EITC-derived
-  // values if the API client hasn't been updated yet.
-  // TODO: remove fallback once api.ts populates federal_tax_change /
-  // state_tax_change / net_income_change on benefit_at_income.
-  const federalTaxChangePoint =
-    benefitData.federal_tax_change ?? -benefitData.federal_eitc_change;
-  const stateTaxChangePoint =
-    benefitData.state_tax_change ?? -benefitData.state_eitc_change;
-  const netIncomeChangePoint =
-    benefitData.net_income_change ?? benefitData.difference;
+  const federalTaxChangePoint = benefitData.federal_tax_change;
+  const stateTaxChangePoint = benefitData.state_tax_change;
+  const netIncomeChangePoint = benefitData.net_income_change;
 
   const xMax = maxEarnings ?? data.x_axis_max;
 
-  // Build chart data. Keep single net-income-change line, but enrich each
-  // point with the per-component deltas so the tooltip can show all three.
-  // TODO: remove fallbacks once api.ts populates federalTaxChange /
-  // stateTaxChange / netIncomeChange arrays on HouseholdImpactResponse.
-  const federalTaxChangeSeries: number[] =
-    data.federalTaxChange ?? data.net_income_change.map(() => 0);
-  const stateTaxChangeSeries: number[] =
-    data.stateTaxChange ?? data.net_income_change.map(() => 0);
-  const netIncomeChangeSeries: number[] =
-    data.netIncomeChange ?? data.net_income_change;
+  const federalTaxChangeSeries = data.federalTaxChange;
+  const stateTaxChangeSeries = data.stateTaxChange;
+  const netIncomeChangeSeries = data.netIncomeChange;
 
   const chartData = data.income_range
     .map((inc, i) => ({

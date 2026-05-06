@@ -66,8 +66,6 @@ function toImpactResponse(h: ExampleHousehold): HouseholdImpactResponse {
       baseline: h.baseline.household_net_income,
       reform: h.reform.household_net_income,
       difference: h.net_income_change,
-      federal_eitc_change: 0,
-      state_eitc_change: 0,
       federal_tax_change: federalTaxChange,
       state_tax_change: h.nc_tax_change,
       net_income_change: h.net_income_change,

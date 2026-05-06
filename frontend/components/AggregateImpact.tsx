@@ -214,16 +214,16 @@ export default function AggregateImpact({ triggered }: Props) {
                 </p>
               </div>
               <div className={`rounded-lg p-5 border ${
-                data.budget.budgetary_impact >= 0 ? 'bg-green-50 border-success' : 'bg-red-50 border-red-300'
+                data.total_cost >= 0 ? 'bg-green-50 border-success' : 'bg-red-50 border-red-300'
               }`}>
-                <p className="text-sm text-gray-700 mb-2">Total budgetary impact</p>
+                <p className="text-sm text-gray-700 mb-2">Total household impact</p>
                 <p className={`text-2xl font-bold ${
-                  data.budget.budgetary_impact >= 0 ? 'text-green-600' : 'text-red-600'
+                  data.total_cost >= 0 ? 'text-green-600' : 'text-red-600'
                 }`}>
-                  {formatBillions(data.budget.budgetary_impact)}
+                  {formatBillions(data.total_cost)}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Combined state + federal change
+                  Net gain to North Carolina households
                 </p>
               </div>
             </div>

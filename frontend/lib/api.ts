@@ -203,9 +203,6 @@ export const api = {
         baseline: baselineAtIncome,
         reform: reformAtIncome,
         difference: netIncomeChangeAtIncome,
-        // EITC fields retained for backward compatibility with ImpactAnalysis.
-        federal_eitc_change: 0,
-        state_eitc_change: 0,
         federal_tax_change: federalTaxChangeAtIncome,
         state_tax_change: stateTaxChangeAtIncome,
         net_income_change: netIncomeChangeAtIncome,
