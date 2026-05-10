@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3008",
-    "build": "mkdir -p ../node_modules && rm -rf ../node_modules/next && ln -s ../frontend/node_modules/next ../node_modules/next && next build --webpack && rm -rf ../.next && cp -R .next ../.next",
+    "build": "rm -rf ../node_modules && ln -s frontend/node_modules ../node_modules && next build --webpack && rm -rf ../.next && cp -R .next ../.next",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run"
