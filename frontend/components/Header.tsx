@@ -23,6 +23,7 @@ const NAV_ITEMS = [
   { label: 'Research', href: 'https://policyengine.org/us/research' },
   { label: 'Model', href: 'https://policyengine.org/us/model' },
   { label: 'API', href: 'https://policyengine.org/us/api' },
+  { label: 'Python', href: 'https://policyengine.org/us/python' },
   {
     label: 'About',
     hasDropdown: true,
