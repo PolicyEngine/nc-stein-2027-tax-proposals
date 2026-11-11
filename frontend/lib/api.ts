@@ -1,8 +1,9 @@
 /**
- * Household impact via the PolicyEngine API.
+ * Household impact via www.policyengine.org's dashboard API.
  *
- * Calls https://api.policyengine.org/us/calculate directly —
- * no backend server required.
+ * The page never calls the PolicyEngine Public API itself: the dashboard
+ * API's server adds PolicyEngine's credential and forwards each household
+ * to the Public API's /us/calculate.
  *
  * For the NC Gov. Stein FY2026-27 Tax Proposals dashboard, two policy
  * overrides are sent: a "baseline" policy encoding the rate-reduction
@@ -18,6 +19,11 @@
  */
 
 import {
+  createPolicyEngineApiClient,
+  PolicyEngineApiError,
+} from "@policyengine/api-client";
+
+import {
   HouseholdRequest,
   HouseholdImpactResponse,
 } from "./types";
@@ -28,72 +34,125 @@ import {
   interpolate,
 } from "./household";
 
-const PE_API_URL = "https://api.policyengine.org";
+const policyengine = createPolicyEngineApiClient();
 
-class ApiError extends Error {
-  status: number;
-  response: unknown;
-  constructor(message: string, status: number, response?: unknown) {
+/** How long a calculation may take before the page gives up on it. */
+const CALCULATION_TIMEOUT_MILLISECONDS = 120_000;
+
+/** Brief gateway failures, which are worth retrying. */
+const RETRYABLE_STATUSES = new Set([502, 503, 504]);
+
+/** A household calculation failed; `message` is written for the user. */
+export class HouseholdCalculationError extends Error {
+  override name = "HouseholdCalculationError";
+
+  constructor(
+    message: string,
+    /** The dashboard API's HTTP status, or null when no answer was read. */
+    readonly status: number | null,
+    /** Whether trying again at once could succeed. */
+    readonly retryable: boolean,
+  ) {
     super(message);
-    this.status = status;
-    this.response = response;
   }
 }
 
-async function fetchWithTimeout(
-  url: string,
-  options: RequestInit,
-  timeout = 120000
-): Promise<Response> {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-    return response;
-  } finally {
-    clearTimeout(id);
-  }
-}
-
-interface PEApiResponse {
-  result: {
-    households: Record<string, Record<string, Record<string, number[]>>>;
-    people: Record<string, Record<string, Record<string, number[]>>>;
-    tax_units: Record<string, Record<string, Record<string, number[]>>>;
-  };
-}
-
-async function peCalculate(body: Record<string, unknown>): Promise<PEApiResponse> {
-  const response = await fetchWithTimeout(
-    `${PE_API_URL}/us/calculate`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }
+/**
+ * Whether React Query should retry a failed household calculation: once,
+ * and only after a brief gateway failure. Each attempt sends two
+ * calculations, and the firewall allows 30 a minute.
+ */
+export function shouldRetryHouseholdCalculation(
+  failureCount: number,
+  error: unknown,
+): boolean {
+  return (
+    failureCount < 1 &&
+    error instanceof HouseholdCalculationError &&
+    error.retryable
   );
-  if (!response.ok) {
-    let errorBody;
-    try {
-      errorBody = await response.json();
-    } catch {
-      errorBody = await response.text();
+}
+
+function dashboardApiMessage(body: unknown): string | null {
+  if (typeof body === "object" && body !== null) {
+    const message = (body as { message?: unknown }).message;
+    if (typeof message === "string" && message.length > 0) {
+      return message;
     }
-    const errorMessage = typeof errorBody === 'object' && errorBody?.message
-      ? errorBody.message
-      : typeof errorBody === 'string'
-        ? errorBody
-        : JSON.stringify(errorBody);
-    throw new ApiError(
-      `PolicyEngine API error: ${response.status} - ${errorMessage}`,
-      response.status,
-      errorBody
+  }
+  return null;
+}
+
+/** Turns a failure of the dashboard API client into a message for the user. */
+function calculationError(error: PolicyEngineApiError): HouseholdCalculationError {
+  if (error.status === null) {
+    // On another origin, such as the dashboard's own host, the firewall's
+    // 429 has no CORS headers, so the browser reports a network failure.
+    // So does the dashboard API's 403 for an origin it does not allow.
+    return new HouseholdCalculationError(
+      "PolicyEngine's calculation service could not be reached. If many " +
+        "calculations have been run from your network in the last minute, " +
+        "wait a minute and try again.",
+      null,
+      false,
     );
   }
-  return response.json();
+  if (error.status === 429) {
+    return new HouseholdCalculationError(
+      "Too many calculations have been run from your network in the last " +
+        "minute. Wait a minute and try again.",
+      429,
+      false,
+    );
+  }
+  const detail =
+    dashboardApiMessage(error.body) ?? "Try again in a few minutes.";
+  return new HouseholdCalculationError(
+    `PolicyEngine could not calculate this household (HTTP ${error.status}): ${detail}`,
+    error.status,
+    RETRYABLE_STATUSES.has(error.status),
+  );
+}
+
+/** Values over the income axis, keyed by year. */
+type ValuesByYear = Record<string, number[]>;
+
+/** The parts of a calculated household this page reads. */
+interface CalculatedHousehold {
+  people: Record<string, Record<string, ValuesByYear>>;
+  households: Record<string, Record<string, ValuesByYear>>;
+  tax_units: Record<string, Record<string, ValuesByYear>>;
+}
+
+async function calculateHousehold(
+  household: Record<string, unknown>,
+  policy?: Record<string, unknown>
+): Promise<CalculatedHousehold> {
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(),
+    CALCULATION_TIMEOUT_MILLISECONDS
+  );
+  try {
+    return await policyengine.calculateHousehold<CalculatedHousehold>(
+      { country: "us", household, policy },
+      { signal: controller.signal }
+    );
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new HouseholdCalculationError(
+        "The calculation took longer than two minutes. Try again.",
+        null,
+        false,
+      );
+    }
+    if (error instanceof PolicyEngineApiError) {
+      throw calculationError(error);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export const api = {
@@ -107,39 +166,39 @@ export const api = {
 
     // Run baseline (expected current law) and reform (Stein) in parallel.
     const [baselineResult, reformResult] = await Promise.all([
-      peCalculate({ household, policy: baselinePolicy }),
-      peCalculate({ household, policy: reformPolicy }),
+      calculateHousehold(household, baselinePolicy),
+      calculateHousehold(household, reformPolicy),
     ]);
 
     // Extract arrays from PE API response.
     const baselineNetIncome: number[] =
-      baselineResult.result.households["your household"][
+      baselineResult.households["your household"][
         "household_net_income"
       ][yearStr];
     const reformNetIncome: number[] =
-      reformResult.result.households["your household"][
+      reformResult.households["your household"][
         "household_net_income"
       ][yearStr];
     const incomeRange: number[] =
-      baselineResult.result.people["you"][
+      baselineResult.people["you"][
         "employment_income"
       ][yearStr];
 
     // Extract NC state income tax arrays.
     const baselineStateTax: number[] =
-      baselineResult.result.tax_units["your tax unit"]["nc_income_tax"][
+      baselineResult.tax_units["your tax unit"]["nc_income_tax"][
         yearStr
       ];
     const reformStateTax: number[] =
-      reformResult.result.tax_units["your tax unit"]["nc_income_tax"][
+      reformResult.tax_units["your tax unit"]["nc_income_tax"][
         yearStr
       ];
 
     // Extract federal income tax arrays.
     const baselineFederalTax: number[] =
-      baselineResult.result.tax_units["your tax unit"]["income_tax"][yearStr];
+      baselineResult.tax_units["your tax unit"]["income_tax"][yearStr];
     const reformFederalTax: number[] =
-      reformResult.result.tax_units["your tax unit"]["income_tax"][yearStr];
+      reformResult.tax_units["your tax unit"]["income_tax"][yearStr];
 
     // Impact = reform (Stein) - baseline (expected current law).
     const netIncomeChange = reformNetIncome.map(
