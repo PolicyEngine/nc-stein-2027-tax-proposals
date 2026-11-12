@@ -1,7 +1,7 @@
 // Renders with react-dom directly: @testing-library/react cannot load here,
 // since its peer dependency @testing-library/dom is not installed.
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import ImpactAnalysis from '../components/ImpactAnalysis';
@@ -57,8 +57,10 @@ const earlierAnswer: HouseholdImpactResponse = {
 
 const refusalMessage =
   'Everyone on your network, such as a workshop or an office, shares a ' +
-  'limit on calculations a minute, and it has been reached. This page can ' +
-  'calculate again in a minute.';
+  'limit on calculations a minute, and it has been reached.';
+
+// A new client for each test, so that no test sees what another showed.
+let queryClient = new QueryClient();
 
 let renderedRoot: Root | null = null;
 let rootContainer: HTMLDivElement | null = null;
@@ -69,6 +71,32 @@ function renderIntoDocument(element: React.ReactNode): HTMLDivElement {
   renderedRoot = createRoot(rootContainer);
   renderedRoot.render(element);
   return rootContainer;
+}
+
+/** Renders ImpactAnalysis again with new props, as the page does. */
+function renderAgain(element: React.ReactNode): void {
+  renderedRoot?.render(element);
+}
+
+/** ImpactAnalysis inside the test's query client. */
+function impactAnalysis(props: React.ComponentProps<typeof ImpactAnalysis>) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ImpactAnalysis {...props} />
+    </QueryClientProvider>
+  );
+}
+
+/** Waits until the page shows the answer for `income`. */
+async function waitForAnswerAtIncome(
+  container: HTMLElement,
+  income: string,
+): Promise<void> {
+  await vi.waitFor(() =>
+    expect(
+      elementWithText(container, 'p', 'Based on your employment income of'),
+    ).toHaveTextContent(income),
+  );
 }
 
 /** The first element matching `selector` whose text contains `text`. */
@@ -82,6 +110,10 @@ function elementWithText(
   );
 }
 
+beforeEach(() => {
+  queryClient = new QueryClient();
+});
+
 afterEach(() => {
   renderedRoot?.unmount();
   rootContainer?.remove();
@@ -92,17 +124,19 @@ afterEach(() => {
 });
 
 describe('ImpactAnalysis', () => {
-  it('shows the last answer and the notice after a rate-limit refusal', async () => {
-    const queryClient = new QueryClient();
+  it('shows the answer that was on screen and the notice after a rate-limit refusal', async () => {
     queryClient.setQueryData(['householdImpact', earlierRequest], earlierAnswer);
     vi.spyOn(api, 'calculateHouseholdImpact').mockRejectedValue(
       new HouseholdCalculationError(refusalMessage, 429, false, true),
     );
-
+    // The page shows the earlier household, then submits another.
     const container = renderIntoDocument(
-      <QueryClientProvider client={queryClient}>
-        <ImpactAnalysis request={refusedRequest} triggered={true} maxEarnings={100000} />
-      </QueryClientProvider>,
+      impactAnalysis({ request: earlierRequest, triggered: true, maxEarnings: 100000 }),
+    );
+    await waitForAnswerAtIncome(container, '$50,000');
+
+    renderAgain(
+      impactAnalysis({ request: refusedRequest, triggered: true, maxEarnings: 100000 }),
     );
 
     await vi.waitFor(() =>
@@ -110,8 +144,9 @@ describe('ImpactAnalysis', () => {
     );
     const notice = container.querySelector('[role="status"]');
     expect(notice).toHaveTextContent(refusalMessage);
+    // The answer shown need not be the one calculated last.
     expect(notice).toHaveTextContent(
-      'The results below are for the last household calculated.',
+      'The results below are for the household shown before.',
     );
     // The labels describe the household whose answer is shown.
     expect(
@@ -123,5 +158,41 @@ describe('ImpactAnalysis', () => {
     expect(container).not.toHaveTextContent(
       'Household calculator temporarily unavailable',
     );
+  });
+
+  it('tells the page which household is shown after a rate-limit refusal', async () => {
+    // The page highlights the chart range of the household shown, not the
+    // range of the refused one.
+    queryClient.setQueryData(['householdImpact', earlierRequest], earlierAnswer);
+    vi.spyOn(api, 'calculateHouseholdImpact').mockRejectedValue(
+      new HouseholdCalculationError(refusalMessage, 429, false, true),
+    );
+    const shownRequests: Array<HouseholdRequest | null> = [];
+    const recordShownRequest = (request: HouseholdRequest | null) => {
+      shownRequests.push(request);
+    };
+    const container = renderIntoDocument(
+      impactAnalysis({
+        request: earlierRequest,
+        triggered: true,
+        maxEarnings: 100000,
+        onShownRequestChange: recordShownRequest,
+      }),
+    );
+    await waitForAnswerAtIncome(container, '$50,000');
+
+    renderAgain(
+      impactAnalysis({
+        request: { ...earlierRequest, max_earnings: 500000 },
+        triggered: true,
+        maxEarnings: 500000,
+        onShownRequestChange: recordShownRequest,
+      }),
+    );
+
+    await vi.waitFor(() =>
+      expect(container.querySelector('[role="status"]')).not.toBeNull(),
+    );
+    expect(shownRequests.at(-1)).toEqual(earlierRequest);
   });
 });
