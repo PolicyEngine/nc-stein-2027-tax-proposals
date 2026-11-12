@@ -194,6 +194,27 @@ function refusalNotice(container: HTMLElement): HTMLElement | undefined {
 }
 
 /**
+ * Types `value` into the text input that shows `currentValue`. React reads
+ * a typed value through the input's native setter and an input event.
+ */
+function typeIntoInput(
+  container: HTMLElement,
+  currentValue: string,
+  value: string,
+): void {
+  const input = Array.from(
+    container.querySelectorAll<HTMLInputElement>('input[type="text"]'),
+  ).find((textInput) => textInput.value === currentValue);
+  expect(input).toBeDefined();
+  const setNativeValue = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    'value',
+  )!.set!;
+  setNativeValue.call(input, value);
+  input!.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/**
  * Shows the example, then has the reader edit its year and calculate the
  * edited household, which is refused.
  */
@@ -378,6 +399,45 @@ describe('HouseholdImpactTab', () => {
     expect(await findButton(container, 'Load the example')).toHaveAttribute(
       'aria-pressed',
       'true',
+    );
+  });
+
+  it('shows a refusal itself after the household tab is opened again', async () => {
+    // Leaving the tab and coming back empties the results area, so a later
+    // refusal must not bring the earlier answer back.
+    const calculate = vi
+      .spyOn(api, 'calculateHouseholdImpact')
+      .mockResolvedValueOnce(calculatedAnswer)
+      .mockImplementation(refuseAndPause);
+    const container = renderPage();
+    await openHouseholdImpactTab(container);
+    (await findButton(container, 'Calculate impact')).click();
+    await vi.waitFor(() =>
+      expect(
+        elementWithText(container, 'p', 'Based on your employment income of'),
+      ).toHaveTextContent('$50,000'),
+    );
+    (await findButton(container, 'Policy overview')).click();
+    await openHouseholdImpactTab(container);
+    expect(
+      elementWithText(container, 'p', 'Based on your employment income of'),
+    ).toBeUndefined();
+
+    typeIntoInput(container, '50,000', '60,000');
+    (await findButton(container, 'Calculate impact')).click();
+    await vi.waitFor(() =>
+      expect(elementWithText(container, 'p', refusalMessage)).toBeDefined(),
+    );
+
+    expect(calculate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ income: 60000 }),
+    );
+    expect(
+      elementWithText(container, 'p', 'Based on your employment income of'),
+    ).toBeUndefined();
+    expect(refusalNotice(container)).toBeUndefined();
+    expect(container).toHaveTextContent(
+      'Household calculator temporarily unavailable',
     );
   });
 });
