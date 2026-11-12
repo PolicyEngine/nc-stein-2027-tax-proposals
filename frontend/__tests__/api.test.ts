@@ -166,7 +166,7 @@ describe("calculateHouseholdImpact", () => {
     });
   });
 
-  it("asks the user to wait after the firewall's rate limit", async () => {
+  it("explains the shared limit after the firewall's rate limit", async () => {
     stubFetch(
       () =>
         new Response("Too Many Requests", {
@@ -176,9 +176,12 @@ describe("calculateHouseholdImpact", () => {
     );
 
     expect(await calculationFailure()).toMatchObject({
-      message: expect.stringMatching(/in the last minute.*wait a minute/i),
+      message: expect.stringMatching(
+        /everyone on your network, such as a workshop or an office, shares a limit on calculations a minute.*can calculate again in a minute/i,
+      ),
       status: 429,
       retryable: false,
+      rateLimited: true,
     });
   });
 
@@ -193,9 +196,12 @@ describe("calculateHouseholdImpact", () => {
     );
 
     expect(await calculationFailure()).toMatchObject({
-      message: expect.stringMatching(/could not be reached.*wait a minute/i),
+      message: expect.stringMatching(
+        /could not be reached.*everyone on your network, such as a workshop or an office, shares a limit on calculations a minute.*can calculate again in a minute/i,
+      ),
       status: null,
       retryable: false,
+      rateLimited: true,
     });
   });
 
@@ -263,6 +269,7 @@ describe("calculateHouseholdImpact", () => {
       message: expect.stringContaining("HTTP 503"),
       status: 503,
       retryable: true,
+      rateLimited: false,
     });
   });
 
@@ -287,6 +294,7 @@ describe("calculateHouseholdImpact", () => {
       message: expect.stringMatching(/two minutes/i),
       status: null,
       retryable: false,
+      rateLimited: false,
     });
   });
 });
