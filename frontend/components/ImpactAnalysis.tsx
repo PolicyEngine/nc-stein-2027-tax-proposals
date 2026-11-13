@@ -203,8 +203,11 @@ export default function ImpactAnalysis({
 
   return (
     <div className="space-y-8">
+      {/* Not a live region: the span beside the Calculate button, on screen
+          during the pause that every refusal starts, announces the
+          explanation. */}
       {rateLimitNotice && (
-        <div role="status" className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-900">
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-900">
           <p>{rateLimitNotice}</p>
           <p className="mt-1 text-sm">The results below are for the household shown before.</p>
         </div>
