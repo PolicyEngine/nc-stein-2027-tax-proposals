@@ -216,6 +216,18 @@ function calculationError(error: PolicyEngineApiError): HouseholdCalculationErro
       error.retryAfterSeconds,
     );
   }
+  if (error.status === 504) {
+    // The dashboard API waited 750 s for the Public API. Its message names
+    // that service, which the reader does not know, and gives no next step.
+    return new HouseholdCalculationError(
+      "PolicyEngine's calculation service did not answer in time " +
+        "(HTTP 504). Try again in a few minutes.",
+      504,
+      false,
+      false,
+      error.retryAfterSeconds,
+    );
+  }
   const detail =
     dashboardApiMessage(error.body) ?? "Try again in a few minutes.";
   return new HouseholdCalculationError(
