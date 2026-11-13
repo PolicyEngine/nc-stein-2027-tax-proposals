@@ -401,6 +401,26 @@ describe("calculateHouseholdImpact", () => {
     expect(retryableByStatus).toEqual({ 502: true, 503: true, 504: false });
   });
 
+  it("shows the dashboard API's message for a 504", async () => {
+    // The page now waits longer than the dashboard API, so the dashboard
+    // API's own answer to a household that took too long reaches it.
+    stubFetch(() =>
+      jsonResponse(504, {
+        status: "error",
+        message: "The Public API did not answer in time.",
+        result: null,
+      }),
+    );
+
+    expect(await calculationFailure()).toMatchObject({
+      message:
+        "PolicyEngine could not calculate this household (HTTP 504): " +
+        "The Public API did not answer in time.",
+      status: 504,
+      rateLimited: false,
+    });
+  });
+
   it("carries the failure's Retry-After, or null without one", async () => {
     stubFetch(
       () =>
@@ -423,7 +443,9 @@ describe("calculateHouseholdImpact", () => {
     expect(failureWithoutRetryAfter).toMatchObject({ retryAfterSeconds: null });
   });
 
-  it("gives up after two minutes without an answer", async () => {
+  it("gives up after 13 minutes without an answer", async () => {
+    // 30 seconds more than the dashboard API's 750-second wait for a
+    // household, so the dashboard API's own 504 arrives first.
     vi.useFakeTimers();
     vi.stubGlobal(
       "fetch",
@@ -437,11 +459,17 @@ describe("calculateHouseholdImpact", () => {
       ),
     );
 
-    const failure = calculationFailure();
-    await vi.advanceTimersByTimeAsync(120_000);
+    let gaveUp = false;
+    const failure = calculationFailure().finally(() => {
+      gaveUp = true;
+    });
+    await vi.advanceTimersByTimeAsync(779_999);
+    const gaveUpBeforeThirteenMinutes = gaveUp;
+    await vi.advanceTimersByTimeAsync(1);
 
+    expect(gaveUpBeforeThirteenMinutes).toBe(false);
     expect(await failure).toMatchObject({
-      message: expect.stringMatching(/two minutes/i),
+      message: "The calculation took longer than 13 minutes. Try again.",
       status: null,
       retryable: false,
       rateLimited: false,

@@ -153,6 +153,22 @@ afterEach(() => {
 });
 
 describe('ImpactAnalysis', () => {
+  it('says a first calculation can take a few minutes while it runs', async () => {
+    vi.spyOn(api, 'calculateHouseholdImpact').mockReturnValue(
+      new Promise(() => undefined),
+    );
+    const container = renderIntoDocument(
+      impactAnalysis({ request: earlierRequest, triggered: true, maxEarnings: 100000 }),
+    );
+
+    await vi.waitFor(() =>
+      expect(elementWithText(container, 'p', 'Calculating impact')).toBeDefined(),
+    );
+    expect(container).toHaveTextContent(
+      'A first calculation can take a few minutes.',
+    );
+  });
+
   it('shows the answer that was on screen and the notice after a rate-limit refusal', async () => {
     queryClient.setQueryData(['householdImpact', earlierRequest], earlierAnswer);
     vi.spyOn(api, 'calculateHouseholdImpact').mockRejectedValue(
