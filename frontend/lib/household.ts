@@ -1,8 +1,9 @@
 /**
- * Build a PolicyEngine household situation for the PE API.
+ * Build a PolicyEngine household situation for a household calculation.
  *
  * NC Gov. Stein FY2026-27 tax proposals dashboard. Two policy overrides
- * are sent to the PE API /us/calculate endpoint:
+ * are sent with it to the Public API's /us/calculate, through
+ * www.policyengine.org's dashboard API:
  *
  *   baseline policy = expected current-law rate-reduction triggers
  *                     (3.49% in 2027, 2.99% in 2028).
@@ -73,7 +74,7 @@ const REFORM_POLICY: Record<string, Record<string, number | boolean>> = {
     "2026-01-01.2100-12-31": 0.1,
   },
   // NOTE: gov.contrib.states.nc.cdcc.* is intentionally omitted here because
-  // the live api.policyengine.org is pinned to policyengine-us 1.634.9 (as
+  // the hosted PolicyEngine Public API is pinned to policyengine-us 1.634.9 (as
   // of 2026-04-24) which predates PR #8142 (merged into 1.666.0). Including
   // these parameters makes /us/calculate 500 with a missing-parameter error
   // and breaks the household calculator. Re-add once the hosted API catches

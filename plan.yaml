@@ -98,7 +98,10 @@ default_year: 2027  # First year rate-maintenance and std-deduction provisions b
 
 # API integration for household calculator
 api_integration:
-  endpoint: "https://api.policyengine.org/us/calculate"
+  # www.policyengine.org's dashboard API, called with @policyengine/api-client;
+  # it forwards to the Public API's POST /us/calculate with PolicyEngine's
+  # credential.
+  endpoint: "https://www.policyengine.org/api/household/calculate"
   method: POST
   calls: 2  # baseline + reform
   variables_requested:

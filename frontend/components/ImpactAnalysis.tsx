@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
+import { useEffect } from 'react';
 import { useHouseholdImpact } from '@/hooks/useHouseholdImpact';
 import type { HouseholdImpactResponse, HouseholdRequest } from '@/lib/types';
 import ChartWatermark from './ChartWatermark';
@@ -22,6 +23,16 @@ interface Props {
   /** When supplied, the chart renders this precomputed payload instead
    * of firing a live /us/calculate request. */
   precomputed?: HouseholdImpactResponse | null;
+  /**
+   * Told which household's answer is shown, and that answer when it is a
+   * precomputed example's, so the page can highlight its chart range and
+   * its example card: after a refusal for the firewall's limit, that is the
+   * household shown before, not the refused one.
+   */
+  onShownRequestChange?: (
+    request: HouseholdRequest | null,
+    precomputedAnswer: HouseholdImpactResponse | null,
+  ) => void;
 }
 
 export default function ImpactAnalysis({
@@ -29,11 +40,22 @@ export default function ImpactAnalysis({
   triggered,
   maxEarnings,
   precomputed,
+  onShownRequestChange,
 }: Props) {
-  const liveQuery = useHouseholdImpact(request, triggered && !precomputed);
-  const data = precomputed ?? liveQuery.data;
-  const isLoading = !precomputed && liveQuery.isLoading;
-  const error = precomputed ? null : liveQuery.error;
+  // After a rate-limit refusal, the answer shown before, calculated or a
+  // precomputed example, stays on screen, so `shownRequest` may differ from
+  // the household submitted.
+  const {
+    data,
+    isLoading,
+    error,
+    shownRequest,
+    precomputedAnswer,
+    rateLimitNotice,
+  } = useHouseholdImpact(request, triggered, precomputed ?? null);
+  useEffect(() => {
+    onShownRequestChange?.(shownRequest, precomputedAnswer);
+  }, [onShownRequestChange, shownRequest, precomputedAnswer]);
 
   if (!triggered) return null;
 
@@ -43,6 +65,7 @@ export default function ImpactAnalysis({
         <div className="text-center">
           <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
           <p className="mt-4 text-gray-600">Calculating impact...</p>
+          <p className="mt-1 text-sm text-gray-500">A first calculation can take a few minutes.</p>
         </div>
       </div>
     );
@@ -88,7 +111,9 @@ export default function ImpactAnalysis({
   const stateTaxChangePoint = benefitData.state_tax_change;
   const netIncomeChangePoint = benefitData.net_income_change;
 
-  const xMax = maxEarnings ?? data.x_axis_max;
+  // The range of the shown answer's household: the range it was calculated
+  // for, or the range chosen for an example.
+  const xMax = shownRequest?.max_earnings ?? maxEarnings ?? data.x_axis_max;
 
   const federalTaxChangeSeries = data.federalTaxChange;
   const stateTaxChangeSeries = data.stateTaxChange;
@@ -179,16 +204,25 @@ export default function ImpactAnalysis({
 
   return (
     <div className="space-y-8">
+      {/* Not a live region: the span beside the Calculate button, on screen
+          during the pause that every refusal starts, announces the
+          explanation. */}
+      {rateLimitNotice && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-900">
+          <p>{rateLimitNotice}</p>
+          <p className="mt-1 text-sm">The results below are for the household shown before.</p>
+        </div>
+      )}
       <h2 className="text-2xl font-bold text-primary">Impact analysis</h2>
 
       {/* Personal impact */}
       <div>
         <h3 className="text-xl font-bold text-gray-800 mb-4">
-          Your personal impact from the Stein FY2026-27 tax proposals ({request?.year ?? 2027})
+          Your personal impact from the Stein FY2026-27 tax proposals ({shownRequest?.year ?? 2027})
         </h3>
         <p className="text-gray-600 mb-4">
-          Based on your employment income of <strong>{formatCurrency(request?.income ?? 0)}</strong>,
-          comparing the Stein reform ({request?.year ?? 2027}) to expected
+          Based on your employment income of <strong>{formatCurrency(shownRequest?.income ?? 0)}</strong>,
+          comparing the Stein reform ({shownRequest?.year ?? 2027}) to expected
           current law (which reflects the triggered rate cuts).
         </p>
 
@@ -204,7 +238,7 @@ export default function ImpactAnalysis({
       {/* Chart */}
       <div className="bg-white border rounded-lg p-6">
         <h3 className="text-lg font-semibold mb-1 text-gray-800">
-          Change in net income under the Stein reform ({request?.year ?? 2027})
+          Change in net income under the Stein reform ({shownRequest?.year ?? 2027})
         </h3>
         <p className="text-sm text-gray-500 mb-4">
           Stein FY2026-27 reform vs. expected current law, by employment income
