@@ -65,6 +65,7 @@ export default function ImpactAnalysis({
         <div className="text-center">
           <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
           <p className="mt-4 text-gray-600">Calculating impact...</p>
+          <p className="mt-1 text-sm text-gray-500">A first calculation can take a few minutes.</p>
         </div>
       </div>
     );
