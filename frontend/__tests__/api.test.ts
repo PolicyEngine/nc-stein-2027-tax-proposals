@@ -382,6 +382,47 @@ describe("calculateHouseholdImpact", () => {
     });
   });
 
+  it("lets a 502 or a 503 be retried, but not a 504", async () => {
+    const retryableByStatus: Record<number, boolean> = {};
+    for (const gatewayStatus of [502, 503, 504]) {
+      stubFetch(
+        () =>
+          new Response("Gateway failure", {
+            status: gatewayStatus,
+            headers: { "Content-Type": "text/plain" },
+          }),
+      );
+      const failure = (await calculationFailure()) as HouseholdCalculationError;
+      retryableByStatus[gatewayStatus] = failure.retryable;
+    }
+
+    // A 504 means the dashboard API has already waited 750 seconds for the
+    // household, so the page shows it instead.
+    expect(retryableByStatus).toEqual({ 502: true, 503: true, 504: false });
+  });
+
+  it("carries the failure's Retry-After, or null without one", async () => {
+    stubFetch(
+      () =>
+        new Response("Service Unavailable", {
+          status: 503,
+          headers: { "Content-Type": "text/plain", "Retry-After": "30" },
+        }),
+    );
+    const failureWithRetryAfter = await calculationFailure();
+    stubFetch(
+      () =>
+        new Response("Service Unavailable", {
+          status: 503,
+          headers: { "Content-Type": "text/plain" },
+        }),
+    );
+    const failureWithoutRetryAfter = await calculationFailure();
+
+    expect(failureWithRetryAfter).toMatchObject({ retryAfterSeconds: 30 });
+    expect(failureWithoutRetryAfter).toMatchObject({ retryAfterSeconds: null });
+  });
+
   it("gives up after two minutes without an answer", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
@@ -421,5 +462,30 @@ describe("shouldRetryHouseholdCalculation", () => {
     ).toEqual([true, false]);
     expect(shouldRetryHouseholdCalculation(0, rateLimited)).toBe(false);
     expect(shouldRetryHouseholdCalculation(0, new Error("other"))).toBe(false);
+  });
+
+  it("does not retry a failure whose Retry-After asks for over a minute", async () => {
+    const failureAfterRetryAfter = async (retryAfterSeconds: number) => {
+      stubFetch(
+        () =>
+          new Response("Service Unavailable", {
+            status: 503,
+            headers: {
+              "Content-Type": "text/plain",
+              "Retry-After": String(retryAfterSeconds),
+            },
+          }),
+      );
+      return calculationFailure();
+    };
+    const failureAskingForAMinute = await failureAfterRetryAfter(60);
+    const failureAskingForLonger = await failureAfterRetryAfter(61);
+
+    expect(shouldRetryHouseholdCalculation(0, failureAskingForAMinute)).toBe(
+      true,
+    );
+    expect(shouldRetryHouseholdCalculation(0, failureAskingForLonger)).toBe(
+      false,
+    );
   });
 });

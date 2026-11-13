@@ -64,10 +64,36 @@ function rateLimitRefusal(): HouseholdCalculationError {
   );
 }
 
+/**
+ * Answers every calculation the page sends with a 503 from the dashboard
+ * API, naming `retryAfterSeconds` in Retry-After when given. Returns how
+ * many calculations have been sent so far.
+ */
+function answerEveryCalculationWithGatewayFailure(
+  retryAfterSeconds?: number,
+): () => number {
+  const fetchStub = vi.fn(
+    async () =>
+      new Response("Service Unavailable", {
+        status: 503,
+        headers:
+          retryAfterSeconds === undefined
+            ? { "Content-Type": "text/plain" }
+            : {
+                "Content-Type": "text/plain",
+                "Retry-After": String(retryAfterSeconds),
+              },
+      }),
+  );
+  vi.stubGlobal("fetch", fetchStub);
+  return () => fetchStub.mock.calls.length;
+}
+
 afterEach(() => {
   queryClient.clear();
   rememberShownHouseholdRequest(queryClient, null);
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   // Real time first, so that ending the pause ends it in real time.
   vi.useRealTimers();
   pauseHouseholdCalculations(0);
@@ -274,6 +300,70 @@ describe("householdImpactQueryOptions", () => {
     await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
 
     expect(queryClient.getQueryData(queryKey)).toEqual(impactAnswer(350));
+  });
+
+  it("retries a gateway failure once, two seconds later", async () => {
+    vi.useFakeTimers();
+    // Each attempt sends the baseline and the reform calculation.
+    const calculationsSent = answerEveryCalculationWithGatewayFailure();
+    const observer = new QueryObserver(
+      queryClient,
+      householdImpactQueryOptions(householdRequest, true),
+    );
+    const unsubscribe = observer.subscribe(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calculationsSent()).toBe(2);
+
+    await vi.advanceTimersByTimeAsync(1_999);
+    const calculationsSentBeforeTwoSeconds = calculationsSent();
+    await vi.advanceTimersByTimeAsync(1);
+    const calculationsSentAtTwoSeconds = calculationsSent();
+    await vi.advanceTimersByTimeAsync(60_000);
+    unsubscribe();
+
+    expect(calculationsSentBeforeTwoSeconds).toBe(2);
+    expect(calculationsSentAtTwoSeconds).toBe(4);
+    expect(calculationsSent()).toBe(4);
+    expect(queryClient.getQueryState(queryKey)?.status).toBe("error");
+  });
+
+  it("waits as long as Retry-After asks before the retry", async () => {
+    vi.useFakeTimers();
+    const calculationsSent = answerEveryCalculationWithGatewayFailure(5);
+    const observer = new QueryObserver(
+      queryClient,
+      householdImpactQueryOptions(householdRequest, true),
+    );
+    const unsubscribe = observer.subscribe(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calculationsSent()).toBe(2);
+
+    await vi.advanceTimersByTimeAsync(4_999);
+    const calculationsSentBeforeRetryAfter = calculationsSent();
+    await vi.advanceTimersByTimeAsync(1);
+    const calculationsSentAtRetryAfter = calculationsSent();
+    unsubscribe();
+
+    expect(calculationsSentBeforeRetryAfter).toBe(2);
+    expect(calculationsSentAtRetryAfter).toBe(4);
+  });
+
+  it("shows a failure whose Retry-After asks for over a minute without retrying", async () => {
+    vi.useFakeTimers();
+    const calculationsSent = answerEveryCalculationWithGatewayFailure(120);
+    const observer = new QueryObserver(
+      queryClient,
+      householdImpactQueryOptions(householdRequest, true),
+    );
+    const unsubscribe = observer.subscribe(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    const failureStatusAtOnce = queryClient.getQueryState(queryKey)?.status;
+
+    await vi.advanceTimersByTimeAsync(180_000);
+    unsubscribe();
+
+    expect(failureStatusAtOnce).toBe("error");
+    expect(calculationsSent()).toBe(2);
   });
 });
 

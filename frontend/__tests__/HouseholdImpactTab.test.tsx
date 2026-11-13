@@ -6,7 +6,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import Home from '../app/(shell)/page';
 import { pauseHouseholdCalculations } from '../hooks/useHouseholdImpact';
-import { api, HouseholdCalculationError } from '../lib/api';
+import {
+  api,
+  HouseholdCalculationError,
+  SHARED_LIMIT_EXPLANATION,
+} from '../lib/api';
 import type { HouseholdImpactResponse } from '../lib/types';
 
 // Recharts' ResponsiveContainer measures its parent, which jsdom cannot do,
@@ -188,9 +192,28 @@ function chartRangeEnd(container: HTMLElement): string | null | undefined {
   return tickLabels[tickLabels.length - 1]?.textContent;
 }
 
-/** The notice above a kept answer, once it is shown. */
+/**
+ * The notice above a kept answer, once it is shown: the refusal, and that
+ * the results are the earlier household's.
+ */
 function refusalNotice(container: HTMLElement): HTMLElement | undefined {
-  return elementWithText(container, '[role="status"]', refusalMessage);
+  const notice = elementWithText(
+    container,
+    'p',
+    'The results below are for the household shown before.',
+  )?.parentElement;
+  return notice?.textContent?.includes(refusalMessage) ? notice : undefined;
+}
+
+/** The live regions whose text includes the shared-limit explanation. */
+function liveRegionsWithSharedLimitExplanation(
+  container: HTMLElement,
+): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>('[role="status"]'),
+  ).filter((liveRegion) =>
+    liveRegion.textContent?.includes(SHARED_LIMIT_EXPLANATION),
+  );
 }
 
 /**
@@ -282,10 +305,7 @@ describe('HouseholdImpactTab', () => {
       ),
     );
 
-    await vi.waitFor(() =>
-      expect(elementWithText(container, '[role="status"]', refusalMessage))
-        .toBeDefined(),
-    );
+    await vi.waitFor(() => expect(refusalNotice(container)).toBeDefined());
     // The example's results stay, with the example's own labels.
     expect(
       elementWithText(container, 'p', 'Based on your employment income of'),
@@ -298,7 +318,7 @@ describe('HouseholdImpactTab', () => {
     );
   });
 
-  it('explains the pause beside the Calculate button, announcing only the explanation', async () => {
+  it('explains the pause beside the Calculate button, announcing only the explanation, once even above a kept answer', async () => {
     pauseHouseholdCalculations();
     const container = renderPage();
     await openHouseholdImpactTab(container);
@@ -319,6 +339,32 @@ describe('HouseholdImpactTab', () => {
     expect(pauseNote?.closest('[role="status"]')).toBeNull();
     expect(pauseNote?.querySelector('[role="status"]')).toHaveTextContent(
       /^Everyone on your network, such as a workshop or an office, shares a limit on calculations a minute\.$/,
+    );
+
+    // After the pause, the page calculates a household, then a refusal
+    // keeps that answer on screen under its notice and starts the pause
+    // again. The explanation is still announced from one place only.
+    vi.spyOn(api, 'calculateHouseholdImpact')
+      .mockResolvedValueOnce(calculatedAnswer)
+      .mockImplementation(refuseAndPause);
+    pauseHouseholdCalculations(0);
+    (await findButton(container, 'Calculate impact')).click();
+    await vi.waitFor(() =>
+      expect(
+        elementWithText(container, 'p', 'Based on your employment income of'),
+      ).toHaveTextContent('$50,000'),
+    );
+    chartRangeButton(container, '$500k').click();
+    await vi.waitFor(() => expect(refusalNotice(container)).toBeDefined());
+    const pausedCalculateButton = await findButton(
+      container,
+      'Calculate again in',
+    );
+
+    const liveRegions = liveRegionsWithSharedLimitExplanation(container);
+    expect(liveRegions).toHaveLength(1);
+    expect(pausedCalculateButton.parentElement).toContainElement(
+      liveRegions[0],
     );
   });
 

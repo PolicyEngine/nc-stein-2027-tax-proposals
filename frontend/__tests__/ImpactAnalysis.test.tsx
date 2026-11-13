@@ -117,6 +117,20 @@ function elementWithText(
   );
 }
 
+/**
+ * The notice above a kept answer: the element holding the note that the
+ * results are the earlier household's.
+ */
+function keptAnswerNotice(container: HTMLElement): Element | undefined {
+  return (
+    elementWithText(
+      container,
+      'p',
+      'The results below are for the household shown before.',
+    )?.parentElement ?? undefined
+  );
+}
+
 /** The label of the last tick on the chart's income axis: where it ends. */
 function chartRangeEnd(container: HTMLElement): string | null | undefined {
   const tickLabels = container.querySelectorAll(
@@ -154,10 +168,8 @@ describe('ImpactAnalysis', () => {
       impactAnalysis({ request: refusedRequest, triggered: true, maxEarnings: 100000 }),
     );
 
-    await vi.waitFor(() =>
-      expect(container.querySelector('[role="status"]')).not.toBeNull(),
-    );
-    const notice = container.querySelector('[role="status"]');
+    await vi.waitFor(() => expect(keptAnswerNotice(container)).toBeDefined());
+    const notice = keptAnswerNotice(container);
     expect(notice).toHaveTextContent(refusalMessage);
     // The answer shown need not be the one calculated last.
     expect(notice).toHaveTextContent(
@@ -193,9 +205,7 @@ describe('ImpactAnalysis', () => {
       impactAnalysis({ request: refusedRequest, triggered: true, maxEarnings: 100000 }),
     );
 
-    await vi.waitFor(() =>
-      expect(container.querySelector('[role="status"]')).not.toBeNull(),
-    );
+    await vi.waitFor(() => expect(keptAnswerNotice(container)).toBeDefined());
     expect(calculate).toHaveBeenCalledTimes(2);
     expect(
       elementWithText(container, 'p', 'Based on your employment income of'),
@@ -226,9 +236,7 @@ describe('ImpactAnalysis', () => {
       }),
     );
 
-    await vi.waitFor(() =>
-      expect(container.querySelector('[role="status"]')).not.toBeNull(),
-    );
+    await vi.waitFor(() => expect(keptAnswerNotice(container)).toBeDefined());
     expect(chartRangeEnd(container)).toBe('$100k');
   });
 
@@ -262,9 +270,7 @@ describe('ImpactAnalysis', () => {
       }),
     );
 
-    await vi.waitFor(() =>
-      expect(container.querySelector('[role="status"]')).not.toBeNull(),
-    );
+    await vi.waitFor(() => expect(keptAnswerNotice(container)).toBeDefined());
     expect(shownRequests.at(-1)).toEqual(earlierRequest);
   });
 });
